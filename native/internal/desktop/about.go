@@ -7,7 +7,7 @@ import (
 	i18npkg "webhola/native/internal/i18n"
 )
 
-const appVersion = "0.1.0"
+const appVersion = "0.2.0"
 
 func (a *app) openAbout() {
 	if a.aboutWindow != nil {

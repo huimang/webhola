@@ -14,8 +14,8 @@ func (a *app) loadDemo() {
 		method, path string
 		code         int
 		body         string
-	}{{"GET", "/api/projects", 200, `{"projects":[{"id":1,"name":"Webhola","version":"0.1.0"}]}`}, {"POST", "/api/preview", 201, `{"id":"preview-42","status":"ready"}`}, {"GET", "/assets/app.css", 304, ""}, {"GET", "/api/missing", 404, `{"error":"Not found"}`}} {
-		req := capturepkg.Message{Line: v.method + " " + v.path + " HTTP/1.1", Headers: "Host: localhost:8080\r\nAccept: application/json\r\nUser-Agent: Webhola-Demo/0.1.0\r\n"}
+	}{{"GET", "/api/projects", 200, `{"projects":[{"id":1,"name":"Webhola","version":"0.2.0"}]}`}, {"POST", "/api/preview", 201, `{"id":"preview-42","status":"ready"}`}, {"GET", "/assets/app.css", 304, ""}, {"GET", "/api/missing", 404, `{"error":"Not found"}`}} {
+		req := capturepkg.Message{Line: v.method + " " + v.path + " HTTP/1.1", Headers: "Host: localhost:8080\r\nAccept: application/json\r\nUser-Agent: Webhola-Demo/0.2.0\r\n"}
 		if v.method == "POST" {
 			req.ContentType = "application/json"
 			req.Body = `{"url":"http://localhost:3000"}`

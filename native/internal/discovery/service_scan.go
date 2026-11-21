@@ -92,7 +92,7 @@ func ProbeHTTP(ctx context.Context, l Listener) (HTTPService, bool) {
 	if err != nil {
 		return HTTPService{}, false
 	}
-	req.Header.Set("User-Agent", "Webhola/0.1.0 HTTP-Service-Scan")
+	req.Header.Set("User-Agent", "Webhola/0.2.0 HTTP-Service-Scan")
 	res, err := client.Do(req)
 	if err != nil {
 		return HTTPService{}, false
