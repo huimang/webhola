@@ -1,0 +1,5 @@
+.build/
+drafts/
+native/build/
+*.pcap
+*.pcapng
