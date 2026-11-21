@@ -174,7 +174,7 @@ func TestArthasRouteView(t *testing.T) {
 	if err := tt.Click("选择 URL 路由"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.Click(jvmpkg.RouteLabel(a.arthas.routes[0])); err != nil {
+	if err := tt.Click(a.arthas.routes[0].Mapping); err != nil {
 		t.Fatal(err)
 	}
 	if a.arthas.method.MethodName != "hello" {

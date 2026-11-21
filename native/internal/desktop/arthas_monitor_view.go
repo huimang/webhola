@@ -49,7 +49,7 @@ func (a *app) arthasControls(c *ui.Context, s *arthasState) {
 		label := ""
 		for _, r := range s.routes {
 			if jvmpkg.RouteKey(r) == selected {
-				label = jvmpkg.RouteLabel(r)
+				label = r.Mapping
 			}
 		}
 		selectRoute := ui.SelectBase(c.Key("jvm-route-select"), &selected)
@@ -75,13 +75,23 @@ func (a *app) arthasControls(c *ui.Context, s *arthasState) {
 						if item.Highlighted() {
 							item.Background(theme.Accent).TextColor(theme.AccentText)
 						}
-						item.Children(func() { ui.Text(c, jvmpkg.RouteLabel(r)).SingleLine() })
+						item.Children(func() { ui.Text(c, r.Mapping).SingleLine() })
 					}
 				})
 			})
 		})
 		if selectRoute.Trigger.Changed() {
 			s.selectRoute(selected)
+		}
+		scanLabel := "arthas_ui.attach_and_scan_routes"
+		if s.connection() != nil {
+			scanLabel = "arthas_ui.rescan_routes"
+		}
+		if ui.PrimaryButton(c, a.tr(scanLabel)).Disabled(s.busy || !s.target.JVM || unavailable).Clicked() {
+			a.scanArthasRoutes(s)
+		}
+		if ui.Button(c, a.tr("arthas_ui.disconnect")).Disabled(s.busy || s.connection() == nil).Clicked() {
+			a.disconnectArthas(s)
 		}
 	})
 	ui.Row(c).FillWidth().Gap(8).Children(func() {
@@ -90,20 +100,10 @@ func (a *app) arthasControls(c *ui.Context, s *arthasState) {
 		ui.Select(c.Key("java-loader"), &s.method.Loader, s.methodLoaders()).Width(140).Label(a.tr("arthas_monitor.classloader")).Disabled(s.busy)
 	})
 	ui.Row(c).FillWidth().Gap(8).Children(func() {
-		label := "arthas_ui.attach_and_scan_routes"
-		if s.connection() != nil {
-			label = "arthas_ui.rescan_routes"
-		}
-		if ui.PrimaryButton(c, a.tr(label)).Disabled(s.busy || !s.target.JVM || unavailable).Clicked() {
-			a.scanArthasRoutes(s)
-		}
 		if ui.Button(c, a.tr("arthas_ui.stop_operation")).Disabled(!s.busy).Clicked() {
 			if s.opCancel != nil {
 				s.opCancel()
 			}
-		}
-		if ui.Button(c, a.tr("arthas_ui.disconnect")).Disabled(s.busy || s.connection() == nil).Clicked() {
-			a.disconnectArthas(s)
 		}
 		if ui.Button(c, a.tr("arthas_ui.watch")).Disabled(s.busy || s.connection() == nil || s.method.MethodName == "" || unavailable).Clicked() {
 			a.observeArthas(s, "watch")
