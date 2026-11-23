@@ -19,6 +19,10 @@ type capturedRequest struct {
 	req      *http.Request
 	exchange Exchange
 	complete bool
+	// MySQL command state, unused for HTTP requests.
+	command   byte
+	sql       string
+	statement uint32
 }
 
 func (x *capturedRequest) snapshot() Exchange {

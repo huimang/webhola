@@ -39,10 +39,15 @@ type streamFactory struct {
 	diag      *diagnosticCounters
 	logf      func(string, ...any)
 	lastFlush time.Time
+	// mysqlPort is set when the capture port is MySQL's default, which takes
+	// precedence over greeting detection.
+	mysqlPort bool
+	// notify wakes protocol detection whenever either side receives bytes.
+	notify chan struct{}
 }
 
 func newStreamFactory(ctx context.Context, emit func(Exchange), diag *diagnosticCounters, logf func(string, ...any)) *streamFactory {
-	return &streamFactory{ctx: ctx, emit: emit, diag: diag, logf: logf, active: map[string]*httpStream{}}
+	return &streamFactory{ctx: ctx, emit: emit, diag: diag, logf: logf, active: map[string]*httpStream{}, notify: make(chan struct{}, 1)}
 }
 
 func (f *streamFactory) log(format string, args ...any) {
@@ -79,8 +84,8 @@ func (f *streamFactory) New(n, t gopacket.Flow, tcp *layers.TCP, ac reassembly.A
 		f.log("take over midstream stream=%d %s -> %s SYN=%v ACK=%v", s.id, s.client, s.server, tcp.SYN, tcp.ACK)
 	}
 	f.wg.Add(2)
-	go func() { defer f.wg.Done(); defer close(s.requests); s.parseRequests() }()
-	go func() { defer f.wg.Done(); s.parseResponses() }()
+	go func() { defer f.wg.Done(); defer close(s.requests); s.parseClient() }()
+	go func() { defer f.wg.Done(); s.parseServer() }()
 	return s
 }
 
@@ -93,6 +98,15 @@ type httpStream struct {
 	midstream           bool
 	aborted             atomic.Bool
 	once                sync.Once
+	// Protocol decision is shared by both parser goroutines.
+	proto     protocolMode
+	protoOnce sync.Once
+	// MySQL connection state. Capabilities are written by the client parser and
+	// read by the response parser.
+	mysqlCaps       atomic.Uint32
+	mysqlStop       atomic.Bool
+	mysqlStatements sync.Map // statement id (uint32) -> SQL
+	mysqlPending    *mysqlFrame
 }
 
 func (s *httpStream) abort() { s.abortWith(false) }
@@ -199,11 +213,16 @@ func (r *streamInput) push(b []byte, stamp time.Time) bool {
 	r.queue = append(r.queue, timedChunk{data: append([]byte(nil), b...), stamp: stamp})
 	r.bytes += len(b)
 	r.cond.Signal()
+	if r.f.notify != nil {
+		select {
+		case r.f.notify <- struct{}{}:
+		default:
+		}
+	}
 	return true
 }
 func (r *streamInput) finish(err error, discard bool) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if discard {
 		r.f.queued.Add(-int64(r.bytes))
 		r.queue = nil
@@ -213,6 +232,40 @@ func (r *streamInput) finish(err error, discard bool) {
 		r.err = err
 	}
 	r.cond.Broadcast()
+	r.mu.Unlock()
+	// Wake protocol detection, which otherwise waits for first bytes forever.
+	if r.f.notify != nil {
+		select {
+		case r.f.notify <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// exhausted reports whether the direction has ended and no bytes remain.
+func (r *streamInput) exhausted() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.err != nil && r.bytes == 0
+}
+
+// peekAt copies up to n queued bytes without consuming them. Protocol
+// detection uses it so the selected parser still sees the first bytes.
+func (r *streamInput) peekAt(n int) []byte {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]byte, 0, n)
+	for _, c := range r.queue {
+		need := n - len(out)
+		if need > len(c.data) {
+			need = len(c.data)
+		}
+		out = append(out, c.data[:need]...)
+		if len(out) >= n {
+			break
+		}
+	}
+	return out
 }
 func (r *streamInput) Read(b []byte) (int, error) {
 	if r.headerBudget == 0 {

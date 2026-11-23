@@ -39,13 +39,22 @@ Content-Type 为 `image/*` 时，Body 默认显示图片元信息（格式、尺
 
 Windows 实时抓包需要已安装的 Npcap；Npcap 的安装与许可由用户确认。
 
+## MySQL 监听
+
+选择 MySQL 端口（默认 3306）开始监听后，抓包按 MySQL 协议报文切分连接，而不是按 HTTP 解析。客户端每条指令（COM_QUERY、COM_STMT_PREPARE、COM_STMT_EXECUTE、COM_PING 等）单独显示为一条记录：列表显示指令名、SQL 或目标语句、耗时与响应大小；右侧显示指令报文和服务端结果，文本协议结果集会附带列名与行数据预览。
+
+- 端口为 3306 时直接按 MySQL 解析。其他端口在点击“开始监听”时会对本机该端口做一次短超时 TCP 探测：如果服务端立即返回 MySQL 初始握手（协议版本 0x0a），本次监听就按 MySQL 解析，因此连接在抓包开始前已建立时，后续命令仍会显示。探测只建立一个随后立即关闭的连接，不发送任何 SQL。探测失败时仍会在捕获到服务端握手或客户端命令帧后自动识别。
+- 握手声明 CLIENT_SSL 或 CLIENT_COMPRESS 的连接会停止解析，避免把加密数据误判为协议帧。
+- 预处理语句的 EXECUTE / CLOSE / FETCH 会显示预处理时记录的 SQL；二进制协议结果行只计数，不解析具体值。
+- MySQL 记录不提供重新发送。没有响应的指令（如 COM_QUIT、COM_STMT_CLOSE）会提示不需要服务端响应。
+
 ## 范围与限制
 
-- 支持 HTTP/1.x 明文，不解密 HTTPS，不解析 HTTP/2、HTTP/3 或 WebSocket 升级后的消息。
+- 支持 HTTP/1.x 与 MySQL 明文，不解密 HTTPS，不解析 HTTP/2、HTTP/3、WebSocket 升级后的消息，以及启用 TLS 或压缩的 MySQL 连接。
 - 只能看见所选网卡实际收到的流量。捕获前已建立的连接会被接管，从下一个完整 HTTP 起始行继续解析；开始抓包时正在传输的那条消息会被跳过。丢包、非对称路由也可能使请求／响应缺失；未匹配的响应不伪造为请求记录。
 - 耗时从完整请求解析到完整响应接收计算，包含正文传输，不是浏览器 TTFB。
 - Headers 与 Body 由内置 HTTP/1.x 解析器解码；Body 为实体正文，并非原始 TCP 字节流。二进制正文显示十六进制，单条预览限制 64 KiB，截断后仍消费剩余正文以保持消息边界。
 - 最多保留最近 1000 条记录及 1000 条未完成请求。数据仅在内存中，不自动保存抓包文件；退出清除。TCP 重组和分片缓存均有上限，超出时丢弃对应连接或分片。
 - Windows 复用已安装的 Npcap 并需要抓包权限；Linux 使用 AF_PACKET，需要 root 或 `CAP_NET_RAW`；macOS 使用系统 BPF，需要设备访问权限。Linux/macOS 尚未完成实机验证。
 
-TCP 重组与 HTTP 解析能力来自 [gopacket](https://github.com/gopacket/gopacket) 与 Go 标准库 `net/http`。
+TCP 重组能力来自 [gopacket](https://github.com/gopacket/gopacket)；HTTP 解析使用 Go 标准库 `net/http`，MySQL 报文由内置帧解析器处理。

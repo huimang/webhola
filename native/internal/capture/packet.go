@@ -350,6 +350,7 @@ func Process(ctx context.Context, source PacketSource, cfg CaptureConfig, emit f
 	defer cancel()
 	diag := &diagnosticCounters{}
 	factory := newStreamFactory(ctx, emit, diag, cfg.Logf)
+	factory.mysqlPort = cfg.MySQL || cfg.TCPPort == mysqlDefaultPort
 	gaps := newCaptureGaps(cfg.Logf)
 	decoder := packetDecoder{diag: diag}
 	assemblers := map[string]*reassembly.Assembler{}

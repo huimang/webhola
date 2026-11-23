@@ -30,6 +30,9 @@ type CaptureInterface struct {
 type CaptureConfig struct {
 	InterfaceID string
 	TCPPort     uint16
+	// MySQL forces MySQL frame parsing. It is set when the port was probed as
+	// MySQL, so captures that start mid-connection still show commands.
+	MySQL bool
 	// Logf receives capture diagnostics. nil disables logging.
 	Logf func(format string, args ...any)
 }
