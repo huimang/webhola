@@ -14,7 +14,7 @@ foreach ($property in $catalogs['zh-CN'].PSObject.Properties) {
 $Language = 'en'
 if ((Get-InstallerMessage 'PublisherMismatch' @('Test Publisher')) -ne 'Installer publisher does not match: Test Publisher') { throw 'Installer parameter formatting failed' }
 $Language = 'zh-CN'
-if ((Get-InstallerMessage 'TSharkTimeout') -ne $catalogs['zh-CN'].TSharkTimeout) { throw 'Installer language change failed' }
+if ((Get-InstallerMessage 'NpcapMissing') -ne $catalogs['zh-CN'].NpcapMissing) { throw 'Installer language change failed' }
 foreach ($name in @('Dependencies.ps1','JavaDependencies.ps1','I18n.ps1')) {
     $parseErrors=$null; $tokens=$null
     $tree = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $name),[ref]$tokens,[ref]$parseErrors)

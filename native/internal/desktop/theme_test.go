@@ -38,7 +38,7 @@ func TestThemeModesFollowSystemChanges(t *testing.T) {
 
 func TestThemePreferencePreservesOtherSettings(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
-	want := settings{Language: "en", TSharkPath: "unavailable-tshark.exe", ArthasConfig: jvmpkg.ArthasConfig{JavaPath: "unavailable-java.exe"}}
+	want := settings{Language: "en", ArthasConfig: jvmpkg.ArthasConfig{JavaPath: "unavailable-java.exe"}}
 	if err := writeSettings(path, want); err != nil {
 		t.Fatal(err)
 	}

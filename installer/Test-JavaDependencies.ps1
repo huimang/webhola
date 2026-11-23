@@ -19,7 +19,7 @@ function Run-Support([string]$Action,[string]$Jdk=$JdkPackage,[switch]$Fail) {
 }
 try {
     $env:PATH=''; $env:JAVA_HOME=''; $env:WEBHOLA_JAVA=''; $env:WEBHOLA_ARTHAS_BOOT=''
-    [IO.File]::WriteAllText($config,'{"tsharkPath":"keep-tshark","arthasHttpPort":"18563","other":{"text":"保留"}}',(New-Object Text.UTF8Encoding $false))
+    [IO.File]::WriteAllText($config,'{"legacySetting":"keep","arthasHttpPort":"18563","other":{"text":"保留"}}',(New-Object Text.UTF8Encoding $false))
     Run-Support 'Detect'
     if ((Get-Content -LiteralPath $state -Raw -Encoding Unicode) -notmatch 'JavaReady=0') { throw 'Missing dependencies reported ready' }
     $bad=Join-Path $testRoot 'bad.zip'; [IO.File]::WriteAllText($bad,'invalid')
@@ -27,7 +27,7 @@ try {
     if (Test-Path -LiteralPath (Join-Path $root 'temurin-21.0.13.1-2')) { throw 'Invalid archive installed' }
     Run-Support 'Install'
     $saved=Get-Content -LiteralPath $config -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($saved.tsharkPath -ne 'keep-tshark' -or $saved.arthasHttpPort -ne '18563' -or $saved.other.text -ne '保留') { throw 'Existing configuration changed' }
+    if ($saved.legacySetting -ne 'keep' -or $saved.arthasHttpPort -ne '18563' -or $saved.other.text -ne '保留') { throw 'Existing configuration changed' }
     if (!(Test-Path -LiteralPath $saved.javaPath) -or !(Test-Path -LiteralPath $saved.arthasBootPath)) { throw 'Dependency paths not saved' }
     if ((Get-Content -LiteralPath $state -Raw -Encoding Unicode) -notmatch 'JavaReady=1') { throw 'Installed components not ready' }
     # Reuse succeeds with no downloadable archives, preserving custom paths.

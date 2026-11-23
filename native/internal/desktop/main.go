@@ -29,49 +29,49 @@ var appIcon = ui.MustParseSVG(iconBytes)
 var windowIcon []byte
 
 type app struct {
-	language                                  string
-	themeMode                                 string
-	arthasConfig                              jvmpkg.ArthasConfig
-	arthasDraft                               jvmpkg.ArthasConfig
-	arthas                                    *arthasState
-	workspace                                 int
-	arthasCleanup                             chan struct{}
-	replaying                                 bool
-	replayFrom                                uint64
-	nextEntry                                 uint64
-	captureIDs                                map[uint64]uint64
-	captureFloor                              uint64
-	replayEndpoints                           replaypkg.ReplayEndpoints
-	aboutWindow                               *mygo.Window
-	bodyPreview                               *bodyPreview
-	bodyWindow                                *mygo.Window
-	bodyFullscreen                            *bodyPreview
-	javaSource                                *javaSourceViewer
-	javaSources                               []*javaSourceViewer
-	scanning                                  bool
-	scanCancel                                context.CancelFunc
-	scanLoading                               *loadingDialog
-	services                                  []discoverypkg.HTTPService
-	serviceChoice, scanStatus                 string
-	ifaceManual                               bool
-	serviceAdapters                           []discoverypkg.LocalAdapter
-	settingsWindow                            *mygo.Window
-	dispatch                                  func(func())
-	tsharkPath, settingsDraft, settingsStatus string
-	showSettings, settingsBusy                bool
-	win                                       *mygo.Window
-	ctx                                       context.Context
-	workers                                   sync.WaitGroup
-	cancel                                    context.CancelFunc
-	events                                    chan capturepkg.Exchange
-	done                                      chan error
-	entries                                   []capturepkg.Exchange
-	selected                                  uint64
-	discarded                                 uint64
-	floor                                     uint64
-	port, iface, search, tab, status, pcap    string
-	deviceList                                []capturepkg.Device
-	running, refreshing, failed, stopping     bool
+	language                               string
+	themeMode                              string
+	arthasConfig                           jvmpkg.ArthasConfig
+	arthasDraft                            jvmpkg.ArthasConfig
+	arthas                                 *arthasState
+	workspace                              int
+	arthasCleanup                          chan struct{}
+	replaying                              bool
+	replayFrom                             uint64
+	nextEntry                              uint64
+	captureIDs                             map[uint64]uint64
+	captureFloor                           uint64
+	replayEndpoints                        replaypkg.ReplayEndpoints
+	aboutWindow                            *mygo.Window
+	bodyPreview                            *bodyPreview
+	bodyWindow                             *mygo.Window
+	bodyFullscreen                         *bodyPreview
+	javaSource                             *javaSourceViewer
+	javaSources                            []*javaSourceViewer
+	scanning                               bool
+	scanCancel                             context.CancelFunc
+	scanLoading                            *loadingDialog
+	services                               []discoverypkg.HTTPService
+	serviceChoice, scanStatus              string
+	ifaceManual                            bool
+	serviceAdapters                        []discoverypkg.LocalAdapter
+	settingsWindow                         *mygo.Window
+	dispatch                               func(func())
+	settingsStatus                         string
+	showSettings, settingsBusy             bool
+	win                                    *mygo.Window
+	ctx                                    context.Context
+	workers                                sync.WaitGroup
+	cancel                                 context.CancelFunc
+	events                                 chan capturepkg.Exchange
+	done                                   chan error
+	entries                                []capturepkg.Exchange
+	selected                               uint64
+	discarded                              uint64
+	floor                                  uint64
+	port, iface, search, tab, status, pcap string
+	deviceList                             []capturepkg.Device
+	running, refreshing, failed, stopping  bool
 }
 
 func newApp(ctx context.Context) *app {
@@ -97,18 +97,14 @@ func (a *app) refresh() {
 		return
 	}
 	a.refreshing = true
-	a.status = i18npkg.MessageText("main.checking_tshark_and_available_adapters")
+	a.status = i18npkg.MessageText("main.checking_available_adapters")
 	a.failed = false
 	a.workers.Add(1)
 	go func() {
 		defer a.workers.Done()
-		path, err := capturepkg.ConfiguredTShark(a.tsharkPath)
-		var list []capturepkg.Device
-		if err == nil {
-			ctx, cancel := context.WithTimeout(a.ctx, 8*time.Second)
-			defer cancel()
-			list, err = capturepkg.Devices(ctx, path)
-		}
+		ctx, cancel := context.WithTimeout(a.ctx, 8*time.Second)
+		defer cancel()
+		list, err := capturepkg.ListDevices(ctx)
 		a.update(func() {
 			a.refreshing = false
 			if err != nil {
@@ -136,23 +132,21 @@ func (a *app) start() {
 	if a.running || a.refreshing || a.scanning || a.replaying {
 		return
 	}
-	path, err := capturepkg.ConfiguredTShark(a.tsharkPath)
-	if err != nil {
-		a.status = i18npkg.ErrorMessage(err)
-		a.failed = true
-		return
-	}
 	id := ""
 	for _, d := range a.deviceList {
 		if d.Label == a.iface {
 			id = d.ID
 		}
 	}
-	args, err := capturepkg.CaptureArgs(id, a.port, a.pcap)
+	cfg, err := capturepkg.Config(id, a.port, a.pcap)
 	if err != nil {
 		a.status = i18npkg.ErrorMessage(err)
 		a.failed = true
 		return
+	}
+	logger, closeLog := openCaptureLog()
+	if logger != nil {
+		cfg.Logf = logger.Printf
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.cancel = cancel
@@ -173,7 +167,8 @@ func (a *app) start() {
 	go func() {
 		defer a.workers.Done()
 		defer cancel()
-		err := capturepkg.Capture(ctx, path, args, func() {
+		defer closeLog()
+		err := capturepkg.RunCapture(ctx, cfg, a.pcap, func() {
 			a.update(func() {
 				if !a.stopping {
 					a.status = i18npkg.MessageText("main.capture_started_waiting_for_http_traffic")
@@ -536,7 +531,6 @@ func Run() {
 		if s, err := readSettings(path); err == nil {
 			a.language = i18npkg.NormalizeLanguage(s.Language)
 			a.themeMode = normalizeThemeMode(s.ThemeMode)
-			a.tsharkPath = s.TSharkPath
 			a.arthasConfig = s.ArthasConfig
 		} else {
 			log.Printf("load settings: %v", err)

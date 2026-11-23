@@ -4,4 +4,4 @@ import (
 	"strings"
 )
 
-func CleanTSharkPath(path string) string { return strings.Trim(strings.TrimSpace(path), "\"") }
+func CleanPath(path string) string { return strings.Trim(strings.TrimSpace(path), "\"") }

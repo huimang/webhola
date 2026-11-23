@@ -19,7 +19,7 @@ Windows 在线安装包为 `Webhola-Setup-0.2.0-x64.exe`，可按需准备两组
 
 | 使用功能 | 所需依赖 |
 | --- | --- |
-| 桌面 HTTP 抓包 | TShark / Wireshark 与 Npcap |
+| 桌面 HTTP 抓包 | Windows 需要 Npcap；Linux/macOS 使用系统抓包接口 |
 | JVM 诊断 | 兼容目标 JVM、支持 attach 的 JDK 与 Arthas |
 
 只使用 HTTP 抓包时无需安装 JVM 诊断组件。Npcap 安装和需要管理员权限的操作仍需用户确认。详细安装说明见[Windows 安装器](installer/README.md)；从源码构建见[开发指南](docs/development.md)。
@@ -28,7 +28,7 @@ Windows 在线安装包为 `Webhola-Setup-0.2.0-x64.exe`，可按需准备两组
 
 ### 查看 HTTP 请求
 
-1. 启动 Webhola，在 **文件 → 设置…** 中确认 TShark 路径；自动发现成功时可留空。
+1. 启动 Webhola，程序会自动枚举可用抓包网卡；Windows 需已安装 Npcap。
 2. 点击 **扫描 HTTP 服务** 并选择服务，或手动填写 HTTP 端口，例如 `8080`。
 3. 选择承载流量的网卡：本机 localhost 请求选 loopback，局域网请求选 WLAN 或以太网。
 4. 点击 **开始监听**，再从浏览器或客户端发起请求。
@@ -56,12 +56,12 @@ Windows 在线安装包为 `Webhola-Setup-0.2.0-x64.exe`，可按需准备两组
 .\Webhola.exe --read C:\captures\sample.pcapng
 ```
 
-示例模式不监听网络；离线读取仍需要 TShark，填写端口后开始读取即可。
+示例模式不监听网络；离线读取不需要外部抓包程序，填写端口后开始读取即可。
 
 ## 当前限制
 
 - HTTP 抓包支持明文 HTTP/1.x，不解密 HTTPS，不解析 HTTP/2、HTTP/3 或 WebSocket 升级后的消息。
-- 只能捕获所选网卡上的流量；抓包中途加入或丢包可能导致记录不完整。
+- 只能捕获所选网卡上的流量；抓包中途加入时会从下一条完整 HTTP 消息开始接管，丢包可能导致记录不完整。
 - 单条 HTTP 正文最多预览 64 KiB，最多保留 1000 条记录；记录保存在内存中，退出后清除。
 - JVM 诊断面向本机 JVM，路由扫描支持 Spring HandlerMethod；需要相应进程权限。
 - Linux/macOS 尚未完成整套桌面应用的实机验收。

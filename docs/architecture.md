@@ -2,12 +2,16 @@
 
 ## 当前实现
 
-桌面应用使用 Go 与 MyGO 原生界面。HTTP 抓包仍通过 TShark/Npcap，JVM 诊断通过 JDK 工具与 Arthas。独立 Npcap 验证工具已经直接调用 Npcap，但尚未替换桌面应用的数据链路。
+桌面应用使用 Go 与 MyGO 原生界面。HTTP 抓包由平台适配器采集 IP 包，公共层使用 gopacket 重组 TCP、使用 Go `net/http` 解析明文 HTTP/1.x；JVM 诊断通过 JDK 工具与 Arthas。
 
 ```mermaid
 flowchart LR
-    N[Npcap] --> T[TShark：TCP 重组与 HTTP 解析]
-    T --> C[capture：PDML 与请求响应记录]
+    N[Windows：Npcap] --> A[平台抓包适配器]
+    L[Linux：AF_PACKET] --> A
+    M[macOS：BPF] --> A
+    A --> P[IP 解码、分片与 TCP 重组]
+    P --> H[HTTP/1.x 解析与请求响应配对]
+    H --> C[capture：请求响应记录]
     C --> D[desktop：展示与操作]
     R[replay：HTTP 重发] --> D
     S[discovery：本机服务与网卡] --> D
@@ -21,7 +25,7 @@ flowchart LR
 
 | 包 | 职责 |
 | --- | --- |
-| `capture` | HTTP 记录模型、TShark 调用、PDML 解析与抓包设备 |
+| `capture` | HTTP 记录模型、平台抓包适配器、IP/TCP 重组、HTTP 解析与离线文件读取 |
 | `replay` | 请求重发、响应读取与重发连接去重 |
 | `discovery` | 本机监听端口、进程、HTTP 探测与网卡匹配 |
 | `jvm` | Arthas 通信、JVM 内存、调用记录、路由与反编译源码 |
@@ -51,7 +55,7 @@ flowchart TD
 
 业务包不能反向依赖 `desktop`。绑定界面私有状态的集成测试放在桌面包，独立业务测试跟随功能包。图标由桌面包嵌入，语言文件由多语言包嵌入；Java 集成测试夹具放在使用它的测试包。
 
-`tools/npcap-probe/` 是独立 Go 模块，直接动态加载已安装 Npcap 的 `wpcap.dll`，无需 TShark、CGo、Npcap SDK 或额外 C 编译器。它验证设备枚举和单包采集，不提供完整 TCP/HTTP 重组。后续方向见[开发计划](roadmap.md)。
+`tools/npcap-probe/` 是独立 Go 模块，直接动态加载已安装 Npcap 的 `wpcap.dll`，无需 CGo、Npcap SDK 或额外 C 编译器。它只用于验证设备枚举和单包采集，不提供完整 TCP/HTTP 重组；桌面应用的抓包链路位于 `native/internal/capture/`。后续方向见[开发计划](roadmap.md)。
 
 ## 语言与主题
 

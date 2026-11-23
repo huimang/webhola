@@ -3,7 +3,6 @@ package desktop
 import (
 	"context"
 	"net"
-	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -48,9 +47,9 @@ func TestPortRowsPreserveBindingsAndLANAdapter(t *testing.T) {
 	if a.iface != a.deviceList[1].Label || a.port != "8081" {
 		t.Fatal("refresh lost selected adapter or port")
 	}
-	args, err := capturepkg.CaptureArgs("6", a.port, "")
-	if err != nil || !strings.Contains(strings.Join(args, " "), "tcp port 8081") {
-		t.Fatal(args, err)
+	cfg, err := capturepkg.Config("6", a.port, "")
+	if err != nil || cfg.InterfaceID != "6" || cfg.TCPPort != 8081 {
+		t.Fatal(cfg, err)
 	}
 	a.running = true
 	a.chooseService(a.services[1].Key())

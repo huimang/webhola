@@ -44,7 +44,7 @@ func (s ArthasConfig) Port() (int, error) {
 }
 
 func dependencyFile(path, label string) (string, error) {
-	path = platformpkg.CleanTSharkPath(path)
+	path = platformpkg.CleanPath(path)
 	if !filepath.IsAbs(path) {
 		return "", i18npkg.MessageError("arthas.select_the_full_path_to_s", label)
 	}
@@ -59,7 +59,7 @@ func dependencyFile(path, label string) (string, error) {
 }
 
 func (s ArthasConfig) Java() (string, error) {
-	p := platformpkg.CleanTSharkPath(s.JavaPath)
+	p := platformpkg.CleanPath(s.JavaPath)
 	if p == "" {
 		p = os.Getenv("WEBHOLA_JAVA")
 	}
@@ -81,7 +81,7 @@ func (s ArthasConfig) Java() (string, error) {
 }
 
 func (s ArthasConfig) Boot() (string, error) {
-	p := platformpkg.CleanTSharkPath(s.BootPath)
+	p := platformpkg.CleanPath(s.BootPath)
 	if p == "" {
 		p = os.Getenv("WEBHOLA_ARTHAS_BOOT")
 	}

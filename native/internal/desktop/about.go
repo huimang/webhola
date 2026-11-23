@@ -36,7 +36,7 @@ func (a *app) aboutView(c *ui.Context) {
 				ui.Text(c, a.tr("about.a_local_toolkit_for_web_developers_to"))
 				ui.Text(c, a.tr("about.features")).Bold()
 				ui.Text(c, a.tr("about.http_service_discovery_port_and_adapter_selection")).TextColor(c.Theme().TextMuted)
-				ui.Text(c, a.tr("about.powered_by_tshark_supports_plain_http_1")).FontSize(12).TextColor(c.Theme().TextMuted)
+				ui.Text(c, a.tr("about.built_in_capture_supports_plain_http_1")).FontSize(12).TextColor(c.Theme().TextMuted)
 			})
 		})
 		ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)

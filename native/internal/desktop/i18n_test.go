@@ -29,7 +29,7 @@ func TestLanguagePersistencePreservesDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := settings{TSharkPath: `C:\missing\tshark.exe`, ArthasConfig: jvmpkg.ArthasConfig{JavaPath: `C:\missing\java.exe`, BootPath: `C:\missing\arthas-boot.jar`, HTTPPort: "9876"}}
+	want := settings{ArthasConfig: jvmpkg.ArthasConfig{JavaPath: `C:\missing\java.exe`, BootPath: `C:\missing\arthas-boot.jar`, HTTPPort: "9876"}}
 	if err := writeSettings(path, want); err != nil {
 		t.Fatal(err)
 	}
@@ -44,12 +44,12 @@ func TestLanguagePersistencePreservesDependencies(t *testing.T) {
 	if err := writeSettings(path, got); err != nil {
 		t.Fatal(err)
 	}
-	if err := persistSettings(context.Background(), path, ""); err != nil {
+	if err := saveLanguage(path, "en"); err != nil {
 		t.Fatal(err)
 	}
 	got, err = readSettings(path)
 	if err != nil || got.Language != "en" {
-		t.Fatal("dependency save lost language")
+		t.Fatal("language save lost settings")
 	}
 	a.changeLanguage("zh-CN")
 	got, err = readSettings(path)
@@ -90,7 +90,7 @@ func TestEnglishMessagesAndCatalogCoverage(t *testing.T) {
 	for _, pair := range [][2]string{
 		{i18npkg.MessageText("service_scan.probing_http_services_d_d", 3, 10), "Probing HTTP services: 3 / 10"},
 		{i18npkg.MessageText("replay.resend_complete_http_d", 201), "Resend complete. HTTP 201."},
-		{i18npkg.MessageText("settings.tshark_path_is_unavailable_w", fmt.Errorf("file missing")), "TShark path is unavailable: file missing"},
+		{i18npkg.MessageText("settings.unable_to_run_java_w", fmt.Errorf("file missing")), "Unable to run Java: file missing"},
 	} {
 		if got := a.tr(pair[0]); got != pair[1] {
 			t.Errorf("%q => %q, want %q", pair[0], got, pair[1])
@@ -163,24 +163,24 @@ func TestEnglishMessagesAndCatalogCoverage(t *testing.T) {
 
 func TestLocalizedMessagesPreserveArgumentsAndErrorChain(t *testing.T) {
 	a := newApp(context.Background())
-	err := i18npkg.MessageError("settings.tshark_path_is_unavailable_w", context.DeadlineExceeded)
+	err := i18npkg.MessageError("settings.unable_to_run_java_w", context.DeadlineExceeded)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("localized error lost its cause")
 	}
 	status := i18npkg.MessageText("service_scan.scan_failed") + i18npkg.ErrorMessage(err)
 	a.language = "en"
-	if got := a.tr(status); got != "Scan failed: TShark path is unavailable: context deadline exceeded" {
+	if got := a.tr(status); got != "Scan failed: Unable to run Java: context deadline exceeded" {
 		t.Fatal(got)
 	}
 	a.language = "zh-CN"
-	if got := a.tr(status); got != "扫描失败：TShark 路径不可用：context deadline exceeded" {
+	if got := a.tr(status); got != "扫描失败：无法运行 Java：context deadline exceeded" {
 		t.Fatal(got)
 	}
 	// Translation applies to message descriptors, never to source-language text
 	// passed in as data, including words identical to a translated UI label.
 	a.language = "en"
 	value := "请求 保存 响应 / 中文路径"
-	if got := a.tr(i18npkg.MessageText("settings.tshark_path_is_unavailable_w", value)); got != "TShark path is unavailable: "+value {
+	if got := a.tr(i18npkg.MessageText("settings.unable_to_run_java_w", value)); got != "Unable to run Java: "+value {
 		t.Fatal(got)
 	}
 	if got := a.tr(value); got != value {
@@ -232,7 +232,7 @@ func TestEnglishViewsAndPayloadPreservation(t *testing.T) {
 	}
 	a.openSettings()
 	settings := ui.NewTester(a.settingsView, 820, 700)
-	for _, label := range []string{"TShark location", "Save", "Cancel"} {
+	for _, label := range []string{"Java / Arthas", "Save", "Cancel"} {
 		if !settings.HasText(label) {
 			t.Errorf("missing settings label %s", label)
 		}

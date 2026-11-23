@@ -6,7 +6,7 @@
 
 服务扫描会标记 `JVM` 和 PID：识别 `java.exe` / `javaw.exe`，也检查服务包装进程加载的 `jvm.dll`。JVM 端口即使未通过 HTTP 探测仍会列出，并标注“HTTP 未确认”；读取进程模块受权限和位数限制，无法识别时会明确提示。扫描不会自动 attach。
 
-1. 在 **文件 → 设置…** 配置 JDK 的 `java.exe`、官方 `arthas-boot.jar` 和 Arthas HTTP 端口（默认 `8563`）。Java 留空依次查找 `WEBHOLA_JAVA`、`JAVA_HOME` 和 PATH；JAR 留空可使用 `WEBHOLA_ARTHAS_BOOT`。配置与 TShark 一同保存、回读，取消不保存。Arthas 为可选依赖，不影响抓包。
+1. 在 **文件 → 设置…** 配置 JDK 的 `java.exe`、官方 `arthas-boot.jar` 和 Arthas HTTP 端口（默认 `8563`）。Java 留空依次查找 `WEBHOLA_JAVA`、`JAVA_HOME` 和 PATH；JAR 留空可使用 `WEBHOLA_ARTHAS_BOOT`。配置随设置保存、回读，取消不保存。Arthas 为可选依赖，不影响抓包。
 2. 扫描并选择已确认的 JVM 服务后，才显示 **JVM 路由与跟踪…** 入口，点击 **attach 并扫描路由**。未确认、非 JVM 服务或仅手动输入端口时不提供 Arthas 追踪。连接前重新核对端口/PID，连接后核对 Arthas 会话返回的 PID；默认端口被其他进程占用时会拒绝连接，需在设置中更换端口。已有且 PID 匹配的 Arthas 可直接复用。
 3. 读取 Spring MVC / WebFlux `RequestMappingHandlerMapping` 的运行时注册表，顶部支持按 URL、HTTP 方法、条件、类或方法搜索，再从 **选择 URL 路由** 下拉框选择，自动填写对应类、方法及 ClassLoader。扫描涵盖该 JVM 的多个应用/管理端口，不保证每条映射都属于所选 HTTP 端口；映射不包含额外的 servlet context-path 或代理前缀。
 4. **watch / trace** 的每次方法调用在左侧单独列出模式、方法、路由、时间、耗时和异常状态。选择记录后，右侧显示参数、返回结果、异常或调用树；JSON 默认格式化高亮，可切换原文、复制，并在独立全屏窗口查看（Esc 返回）。原始 Arthas 结果也保留为独立页签。观察点安装成功后再发起请求，也可使用原有的重新发送功能；不会自动重放历史请求。一轮观察持续到点击 **停止操作**、30 分钟或 100000 次命中为止。切换路由显示各自的记录，继续观察和方法下探会保留已有记录，清空不改变观察目标。

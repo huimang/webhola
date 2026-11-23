@@ -10,7 +10,7 @@
 ./native/build.ps1 -Demo
 ```
 
-产物为 `native/build/Webhola.exe`。运行抓包功能需准备 TShark 与 Npcap；JVM 诊断按需准备兼容目标 JVM、支持 attach 的 JDK 和 Arthas。
+产物为 `native/build/Webhola.exe`。Windows 运行抓包功能需安装 Npcap；Linux 需要 root 或 `CAP_NET_RAW`，macOS 需要 BPF 访问权限。JVM 诊断按需准备兼容目标 JVM、支持 attach 的 JDK 和 Arthas。
 
 图标嵌入资源在 `native/internal/desktop/resources/`，构建脚本从品牌素材同步。Windows 文件版本定义在 `native/resources/webhola.rc`，由已跟踪的 `native/resource_windows_amd64.syso` 提供链接输入；更新版本或品牌资源后运行：
 
@@ -28,10 +28,9 @@ go test ./...
 go vet ./...
 ```
 
-普通解析、状态和界面测试不要求安装抓包驱动。真实 TShark 集成测试使用生成的 TCP 分段 PCAP，并验证本机选定端口的实时抓包：
+`internal/capture` 的默认测试使用手工构造的 IP 包和生成的 PCAP/PCAPNG 文件，不要求安装抓包驱动。设置 `WEBHOLA_INTEGRATION=1` 后，桌面包还会尝试在本机 loopback 上实时抓取选定端口的请求，需要 Npcap 与相应权限：
 
 ```powershell
-$env:WEBHOLA_TSHARK='D:\tools\Wireshark\tshark.exe'
 $env:WEBHOLA_INTEGRATION='1'
 go test ./...
 ```

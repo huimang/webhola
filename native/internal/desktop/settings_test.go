@@ -11,23 +11,22 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	capturepkg "webhola/native/internal/capture"
+	jvmpkg "webhola/native/internal/jvm"
 )
 
 func TestSettingsPersistence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "Webhola", "settings.json")
 	s, err := readSettings(path)
-	if err != nil || s.TSharkPath != "" {
-		t.Fatal("missing settings should use auto discovery")
+	if err != nil || s != (settings{}) {
+		t.Fatal("missing settings should use defaults")
 	}
-	for _, want := range []string{`D:\tools with spaces\Wireshark\tshark.exe`, ""} {
-		if err := writeSettings(path, settings{TSharkPath: want}); err != nil {
-			t.Fatal(err)
-		}
-		got, err := readSettings(path)
-		if err != nil || got.TSharkPath != want {
-			t.Fatalf("settings not retained: %+v %v", got, err)
-		}
+	want := settings{Language: "en", ThemeMode: "dark", ArthasConfig: jvmpkg.ArthasConfig{JavaPath: `D:\tools with spaces\bin\java.exe`, HTTPPort: "9876"}}
+	if err := writeSettings(path, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readSettings(path)
+	if err != nil || got != want {
+		t.Fatalf("settings not retained: %+v %v", got, err)
 	}
 	if err := os.WriteFile(path, []byte("invalid json"), 0600); err != nil {
 		t.Fatal(err)
@@ -37,27 +36,9 @@ func TestSettingsPersistence(t *testing.T) {
 	}
 }
 
-func TestConfiguredPathOverridesEnvironment(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "tshark.exe")
-	if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("WEBHOLA_TSHARK", filepath.Join(dir, "missing.exe"))
-	got, err := capturepkg.ConfiguredTShark(`"` + path + `"`)
-	if err != nil || got != path {
-		t.Fatalf("configured path was not preferred: %q %v", got, err)
-	}
-	for _, bad := range []string{dir, filepath.Join(dir, "missing.exe"), "relative.exe"} {
-		if _, err := capturepkg.ConfiguredTShark(bad); err == nil {
-			t.Fatalf("accepted %q", bad)
-		}
-	}
-}
-
 func TestSettingsViewCancelAndBusy(t *testing.T) {
 	a := newApp(context.Background())
-	a.tsharkPath = `C:\tools\tshark.exe`
+	a.arthasConfig = jvmpkg.ArthasConfig{JavaPath: `C:\tools\java.exe`}
 	a.openSettings()
 	tt := ui.NewTester(a.settingsView, 740, 460)
 	if preview := os.Getenv("WEBHOLA_SETTINGS_PREVIEW"); preview != "" {
@@ -71,7 +52,7 @@ func TestSettingsViewCancelAndBusy(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if !tt.HasText("TShark 位置") || a.settingsDraft != a.tsharkPath {
+	if !tt.HasText("Java / Arthas") || a.arthasDraft.JavaPath != a.arthasConfig.JavaPath {
 		t.Fatal("settings not populated")
 	}
 	for _, size := range [][2]int{{740, 460}, {640, 400}} {
@@ -83,11 +64,11 @@ func TestSettingsViewCancelAndBusy(t *testing.T) {
 			}
 		}
 	}
-	a.settingsDraft = "unsaved.exe"
+	a.arthasDraft.JavaPath = "unsaved.exe"
 	if err := tt.Click("取消"); err != nil {
 		t.Fatal(err)
 	}
-	if a.showSettings || a.tsharkPath != `C:\tools\tshark.exe` {
+	if a.showSettings || a.arthasConfig.JavaPath != `C:\tools\java.exe` {
 		t.Fatal("cancel saved changes")
 	}
 	a.running = true
@@ -97,14 +78,15 @@ func TestSettingsViewCancelAndBusy(t *testing.T) {
 	}
 }
 
-func TestInvalidSettingsKeepSavedPath(t *testing.T) {
+func TestInvalidSettingsKeepSavedValues(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
-	want := settings{TSharkPath: "previous.exe"}
+	want := settings{Language: "en", ThemeMode: "light", ArthasConfig: jvmpkg.ArthasConfig{HTTPPort: "9876"}}
 	if err := writeSettings(path, want); err != nil {
 		t.Fatal(err)
 	}
-	if err := persistSettings(context.Background(), path, filepath.Join(t.TempDir(), "missing.exe")); err == nil {
-		t.Fatal("invalid path saved")
+	bad := settings{ArthasConfig: jvmpkg.ArthasConfig{JavaPath: filepath.Join(t.TempDir(), "missing.exe")}}
+	if err := persistAllSettings(context.Background(), path, bad); err == nil {
+		t.Fatal("invalid Java path saved")
 	}
 	got, err := readSettings(path)
 	if err != nil || got != want {
@@ -112,21 +94,14 @@ func TestInvalidSettingsKeepSavedPath(t *testing.T) {
 	}
 }
 
-func TestSaveSettingsAndReopenIntegration(t *testing.T) {
-	if os.Getenv("WEBHOLA_INTEGRATION") != "1" {
-		t.Skip("requires real TShark")
-	}
-	tool, err := capturepkg.FindTShark()
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestSaveSettingsAndReopen(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("APPDATA", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	a := newApp(context.Background())
 	a.pcap = "fixture.pcap"
+	a.arthasConfig = jvmpkg.ArthasConfig{HTTPPort: "9876"}
 	a.openSettings()
-	a.settingsDraft = tool
 	queue := make(chan func(), 4)
 	a.dispatch = func(fn func()) { queue <- fn }
 	tt := ui.NewTester(a.settingsView, 740, 460)
@@ -140,28 +115,19 @@ func TestSaveSettingsAndReopenIntegration(t *testing.T) {
 		t.Fatal("save did not finish")
 	}
 	a.workers.Wait()
-	if a.showSettings || a.settingsBusy || a.tsharkPath != tool {
+	if a.showSettings || a.settingsBusy || a.arthasConfig.HTTPPort != "9876" {
 		t.Fatalf("save failed: %s", a.settingsStatus)
-	}
-	select {
-	case fn := <-queue:
-		fn()
-	default:
-		t.Fatal("main window was not refreshed")
 	}
 	path, err := settingsPath()
 	if err != nil {
 		t.Fatal(err)
 	}
 	saved, err := readSettings(path)
-	if err != nil || saved.TSharkPath != tool {
-		t.Fatalf("saved path was not readable: %+v %v", saved, err)
+	if err != nil || saved.ArthasConfig != a.arthasConfig || saved.Language != "zh-CN" {
+		t.Fatalf("saved settings were not readable: %+v %v", saved, err)
 	}
 	a.openSettings()
-	if a.settingsDraft != tool {
-		t.Fatal("reopening lost saved path")
-	}
-	if err := validateTShark(context.Background(), saved.TSharkPath); err != nil {
-		t.Fatal(err)
+	if a.arthasDraft != a.arthasConfig {
+		t.Fatal("reopening lost saved values")
 	}
 }

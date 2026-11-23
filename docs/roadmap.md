@@ -7,7 +7,7 @@
 - 桌面 HTTP/1.x 抓包、服务扫描、请求重发和正文查看。
 - 本机 JVM / Arthas 诊断、路由、调用记录、源码与内存查看。
 - Go 源码按功能拆包，桌面入口与业务包分离。
-- Windows Npcap 命令行工具直接枚举设备并捕获本机 HTTP 请求和响应，不依赖 TShark。
+- 跨平台抓包链路接入桌面应用：Windows 使用 Npcap，Linux/macOS 使用系统接口；不再依赖 TShark。
 
 ## 待实现：新增功能计划
 
@@ -39,11 +39,11 @@ flowchart TB
 
 | 工作 | 当前状态 |
 | --- | --- |
-| Windows Npcap 设备枚举、链路头转换、单包采集 | 独立工具已验证 |
-| 生产用通用接口、并发关闭、诊断和缓存边界 | 待实现与验证 |
-| TCP 重组、完整 HTTP 消息解析与请求响应配对 | 待接入并验证 |
-| Linux AF_PACKET、macOS BPF 适配器 | 待实现与实机验证 |
-| 桌面应用切换到上述链路，去掉 TShark 依赖 | 尚未实施 |
+| 通用 PacketSource / IPPacket、并发关闭、诊断和缓存边界 | 已实现并通过单元测试 |
+| TCP 重组、完整 HTTP 消息解析与请求响应配对 | 已实现并通过生成的 PCAP 测试 |
+| Windows Npcap 适配器接入桌面应用 | 已实现，待 Windows 实机验证 |
+| Linux AF_PACKET、macOS BPF 适配器 | 已实现，待对应平台实机验证 |
+| 桌面应用去掉 TShark 依赖 | 已实施 |
 
 验证需覆盖 loopback、物理网卡、IPv4/IPv6、分片、乱序、重传、缺包、长连接、正文截断及空闲取消。当前讨论范围是明文 HTTP/1.x，不包含新增 HTTPS 解密、HTTP/2 或 HTTP/3 支持。
 

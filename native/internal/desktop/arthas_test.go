@@ -28,13 +28,9 @@ func TestArthasSettingsPreserved(t *testing.T) {
 	if err := writeSettings(p, want); err != nil {
 		t.Fatal(err)
 	}
-	// Saving TShark alone must not erase the optional JVM dependencies.
-	// Use an empty draft to avoid requiring external programs here.
-	want.BootPath = ""
+	// Saving other preferences must not erase the optional JVM dependencies.
+	want.Language = "en"
 	if err := writeSettings(p, want); err != nil {
-		t.Fatal(err)
-	}
-	if err := persistSettings(context.Background(), p, ""); err != nil {
 		t.Fatal(err)
 	}
 	got, err := readSettings(p)

@@ -12,16 +12,14 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	capturepkg "webhola/native/internal/capture"
 	i18npkg "webhola/native/internal/i18n"
 	jvmpkg "webhola/native/internal/jvm"
 	platformpkg "webhola/native/internal/platform"
 )
 
 type settings struct {
-	Language   string `json:"language,omitempty"`
-	ThemeMode  string `json:"theme,omitempty"`
-	TSharkPath string `json:"tsharkPath"`
+	Language  string `json:"language,omitempty"`
+	ThemeMode string `json:"theme,omitempty"`
 	jvmpkg.ArthasConfig
 }
 
@@ -69,33 +67,15 @@ func writeSettings(path string, s settings) error {
 	return os.Rename(f.Name(), path)
 }
 
-func validateTShark(ctx context.Context, path string) error {
-	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, path, "--version")
-	platformpkg.HideProcess(cmd)
-	var out platformpkg.TailWriter
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	if err := cmd.Run(); err != nil {
-		return i18npkg.MessageError("settings.unable_to_run_tshark_check_the_file", err)
-	}
-	if !strings.Contains(strings.ToLower(string(out.Buf)), "tshark") {
-		return i18npkg.MessageError("settings.the_selected_file_did_not_return_tshark")
-	}
-	return nil
-}
-
 func (a *app) openSettings() {
 	if a.settingsWindow != nil {
 		a.settingsWindow.Focus()
 		return
 	}
 	if a.running {
-		a.status = i18npkg.MessageText("settings.stop_capture_before_changing_the_tshark_path")
+		a.status = i18npkg.MessageText("settings.stop_capture_before_changing_settings")
 		return
 	}
-	a.settingsDraft = a.tsharkPath
 	a.arthasDraft = a.arthasConfig
 	a.settingsStatus = ""
 	a.showSettings = true
@@ -113,7 +93,6 @@ func (a *app) openSettings() {
 	w.OnClosed(func() {
 		a.settingsWindow = nil
 		a.showSettings = false
-		a.settingsDraft = a.tsharkPath
 		a.win.Invalidate()
 	})
 	w.Show()
@@ -127,7 +106,6 @@ func (a *app) closeSettings() {
 		a.settingsWindow.Close()
 	} else {
 		a.showSettings = false
-		a.settingsDraft = a.tsharkPath
 	}
 }
 
@@ -146,26 +124,7 @@ func (a *app) updateSettings(fn func()) {
 	}
 }
 
-func persistSettings(ctx context.Context, path, draft string) error {
-	s, err := readSettings(path)
-	if err != nil {
-		return err
-	}
-	s.TSharkPath = draft
-	return persistAllSettings(ctx, path, s)
-}
-
 func persistAllSettings(ctx context.Context, path string, s settings) error {
-	draft := s.TSharkPath
-	if draft != "" {
-		tool, err := capturepkg.ConfiguredTShark(draft)
-		if err != nil {
-			return err
-		}
-		if err = validateTShark(ctx, tool); err != nil {
-			return err
-		}
-	}
 	if _, err := s.Port(); err != nil {
 		return err
 	}
@@ -205,42 +164,15 @@ func persistAllSettings(ctx context.Context, path string, s settings) error {
 	return nil
 }
 
-func (a *app) chooseTShark() {
-	if a.settingsBusy {
-		return
-	}
-	a.settingsBusy = true
-	parent := a.settingsWindow
-	if parent == nil {
-		parent = a.win
-	}
-	dialogTitle, filterName := a.tr("settings.select_tshark_exe"), a.tr("settings.tshark_executable")
-	a.workers.Add(1)
-	go func() {
-		defer a.workers.Done()
-		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: parent, Title: dialogTitle, Filters: []mygo.FileFilter{{Name: filterName, Extensions: []string{"exe"}}}})
-		a.updateSettings(func() {
-			a.settingsBusy = false
-			if err != nil {
-				a.settingsStatus = i18npkg.ErrorMessage(err)
-			} else if len(paths) > 0 {
-				a.settingsDraft = paths[0]
-				a.settingsStatus = ""
-			}
-		})
-	}()
-}
-
 func (a *app) saveSettings() {
 	if a.settingsBusy {
 		return
 	}
 	language := i18npkg.NormalizeLanguage(a.language)
 	themeMode := normalizeThemeMode(a.themeMode)
-	draft := platformpkg.CleanTSharkPath(a.settingsDraft)
 	config := a.arthasDraft
-	config.JavaPath = platformpkg.CleanTSharkPath(config.JavaPath)
-	config.BootPath = platformpkg.CleanTSharkPath(config.BootPath)
+	config.JavaPath = platformpkg.CleanPath(config.JavaPath)
+	config.BootPath = platformpkg.CleanPath(config.BootPath)
 	config.HTTPPort = strings.TrimSpace(config.HTTPPort)
 	a.settingsBusy = true
 	a.settingsStatus = i18npkg.MessageText("settings.validating_dependency_settings")
@@ -249,7 +181,7 @@ func (a *app) saveSettings() {
 		defer a.workers.Done()
 		path, err := settingsPath()
 		if err == nil {
-			err = persistAllSettings(a.ctx, path, settings{Language: language, ThemeMode: themeMode, TSharkPath: draft, ArthasConfig: config})
+			err = persistAllSettings(a.ctx, path, settings{Language: language, ThemeMode: themeMode, ArthasConfig: config})
 		}
 		a.updateSettings(func() {
 			a.settingsBusy = false
@@ -257,12 +189,11 @@ func (a *app) saveSettings() {
 				a.settingsStatus = i18npkg.ErrorMessage(err)
 				return
 			}
-			a.tsharkPath = draft
 			a.arthasConfig = config
 			a.closeSettings()
 			a.update(func() {
 				if a.pcap != "" {
-					a.status = i18npkg.MessageText("settings.tshark_path_saved_you_can_now_read")
+					a.status = i18npkg.MessageText("settings.settings_saved")
 					a.failed = false
 				} else {
 					a.refresh()
@@ -277,18 +208,7 @@ func (a *app) settingsView(c *ui.Context) {
 	ui.Column(c).FillWidth().FillHeight().Padding(24).Gap(16).Children(func() {
 		ui.Scroll(c.Key("settings-content")).FillWidth().Grow(1).Children(func() {
 			ui.Column(c).FillWidth().Gap(14).Children(func() {
-				ui.Text(c, a.tr("settings.tshark_location")).FontSize(17).Bold()
-				ui.Text(c, a.tr("settings.select_tshark_exe_from_your_wireshark_installation")).TextColor(c.Theme().TextMuted)
-				ui.Row(c).FillWidth().Gap(12).Children(func() {
-					ui.TextInput(c.Key("tshark-path"), &a.settingsDraft).Grow(1).Placeholder(`C:\Program Files\Wireshark\tshark.exe`).Label(a.tr("settings.tshark_executable_path")).Disabled(a.settingsBusy)
-					if ui.Button(c, a.tr("settings.browse")).Disabled(a.settingsBusy).Clicked() {
-						a.chooseTShark()
-					}
-				})
-				ui.Text(c, a.tr("settings.custom_paths_override_environment_variables_and_system")).TextColor(c.Theme().TextMuted)
-				ui.Text(c, a.tr("settings.live_capture_requires_npcap_setting_the_tshark")).TextColor(c.Theme().TextMuted)
-				ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)
-				ui.Text(c, a.tr("settings.java_and_arthas")).FontSize(17).Bold()
+				ui.Text(c, a.tr("settings.java_and_arthas")).FontSize(14).Bold()
 				ui.Text(c, a.tr("settings.use_a_jdk_compatible_with_the_target")).TextColor(c.Theme().TextMuted)
 				ui.Row(c).FillWidth().Gap(12).Children(func() {
 					ui.TextInput(c.Key("java-path"), &a.arthasDraft.JavaPath).Grow(1).Label(a.tr("settings.java_executable_path")).Placeholder(a.tr("settings.jdk_java_exe_optional")).Disabled(a.settingsBusy)

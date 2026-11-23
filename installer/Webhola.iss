@@ -1,11 +1,9 @@
 #ifndef AppVersion
   #define AppVersion "0.2.0"
 #endif
-#define WiresharkVersion "4.6.9"
 #define NpcapVersion "1.90"
 #define JdkSHA256 "BBEBEA1469996B276683C9299C227B294F85C847039C82633218186A4AD4FBF2"
 #define ArthasSHA256 "2F75EA954EAD5D02C4A743ECD783FD92F546A44EF3AEE437EA5066EB30AD07BF"
-#define WiresharkSHA256 "BF9B5CE8A89F244C376A9B1A946276EAA06463DDE3E33069A34D7F102F5878CF"
 #define NpcapSHA256 "682B57E1C05EF375931975C9D6DED40888F4BFDF9F4B11571E654F962F1199B6"
 #ifndef LanguageFile
   #define LanguageFile "compiler:Languages\ChineseSimplified.isl"
@@ -62,7 +60,7 @@ Filename: "{app}\Webhola.exe"; Description: "{cm:RunWebhola}"; Flags: nowait pos
 [Code]
 var
   Downloads: TDownloadWizardPage;
-  NeedWireshark, NeedNpcap, DownloadsReady, CaptureReady, RestartNeeded: Boolean;
+  NeedNpcap, DownloadsReady, CaptureReady, RestartNeeded: Boolean;
   NeedJdk, NeedArthas, JavaReady: Boolean;
   JavaMessage: String;
   DependencyMessage: String;
@@ -138,7 +136,6 @@ begin
   Result := True;
   if CurPageID <> wpReady then Exit;
   DownloadsReady := False;
-  NeedWireshark := False;
   NeedNpcap := False;
   NeedJdk := False;
   NeedArthas := False;
@@ -149,7 +146,6 @@ begin
     Result := False;
     Exit;
   end;
-  NeedWireshark := StateValue('TSharkPath') = '';
   NeedNpcap := StateValue('NpcapInstalled') <> '1';
   end;
   if WizardIsTaskSelected('jvm') then begin
@@ -162,14 +158,11 @@ begin
     NeedJdk := JavaState('JavaPath') = '';
     NeedArthas := JavaState('BootPath') = '';
   end;
-  if not NeedWireshark and not NeedNpcap and not NeedJdk and not NeedArthas then begin
+  if not NeedNpcap and not NeedJdk and not NeedArthas then begin
     DownloadsReady := True;
     Exit;
   end;
   Downloads.Clear;
-  if NeedWireshark then Downloads.Add(
-    'https://www.wireshark.org/download/win64/all-versions/Wireshark-{#WiresharkVersion}-x64.exe',
-    'Wireshark-{#WiresharkVersion}-x64.exe', '{#WiresharkSHA256}');
   if NeedNpcap then Downloads.Add('https://npcap.com/dist/npcap-{#NpcapVersion}.exe',
     'npcap-{#NpcapVersion}.exe', '{#NpcapSHA256}');
   if NeedJdk then Downloads.Add(
@@ -182,9 +175,6 @@ begin
   try
     try
       Downloads.Download;
-      if NeedWireshark then
-        if not RunSupport('VerifyWireshark', ExpandConstant('{tmp}\Wireshark-{#WiresharkVersion}-x64.exe')) then
-          RaiseException(CustomMessage('WiresharkSignatureFailed'));
       if NeedNpcap then
         if not RunSupport('VerifyNpcap', ExpandConstant('{tmp}\npcap-{#NpcapVersion}.exe')) then
           RaiseException(CustomMessage('NpcapSignatureFailed'));
@@ -237,19 +227,14 @@ begin
   end;
   ContinueSetup := True;
   if WizardIsTaskSelected('capture') then begin
-  if NeedWireshark then begin
-    WizardForm.StatusLabel.Caption := CustomMessage('InstallCapture');
-    ContinueSetup := InstallDependency(ExpandConstant('{tmp}\Wireshark-{#WiresharkVersion}-x64.exe'),
-      '/S /desktopicon=no /quicklaunchicon=no', 'VerifyWireshark', False);
-  end;
-  if ContinueSetup and NeedNpcap then begin
+  if NeedNpcap then begin
     WizardForm.StatusLabel.Caption := CustomMessage('NpcapLicense');
     ContinueSetup := InstallDependency(ExpandConstant('{tmp}\npcap-{#NpcapVersion}.exe'),
       '', 'VerifyNpcap', True);
   end;
   if ContinueSetup then begin
     WizardForm.StatusLabel.Caption := CustomMessage('VerifyCapture');
-    if RunSupport('Configure', '') then CaptureReady := StateValue('CaptureReady') = '1';
+    if RunSupport('Detect', '') then CaptureReady := StateValue('CaptureReady') = '1';
     if not CaptureReady then DependencyMessage := StateValue('Error');
   end;
   end;
