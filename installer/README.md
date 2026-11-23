@@ -1,6 +1,6 @@
 # Webhola Windows 在线安装包
 
-产物：`native/build/Webhola-Setup-0.2.0-x64.exe`。默认将 Webhola 安装到当前用户的 `%LOCALAPPDATA%/Programs/Webhola`，创建开始菜单入口，并提供正常的 Windows 卸载程序；桌面快捷方式可选。
+产物：`native/build/Webhola-Setup-0.2.1-x64.exe`。默认将 Webhola 安装到当前用户的 `%LOCALAPPDATA%/Programs/Webhola`，创建开始菜单入口，并提供正常的 Windows 卸载程序；桌面快捷方式可选。
 
 ## 用户安装流程
 

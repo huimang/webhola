@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.2.0"
+  #define AppVersion "0.2.1"
 #endif
 #define NpcapVersion "1.90"
 #define JdkSHA256 "BBEBEA1469996B276683C9299C227B294F85C847039C82633218186A4AD4FBF2"

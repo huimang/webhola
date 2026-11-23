@@ -16,6 +16,6 @@ if (!(Test-Path -LiteralPath $language)) {
 }
 & $Compiler "/DLanguageFile=$language" (Join-Path $PSScriptRoot 'Webhola.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
-$setup = Join-Path $repo 'native/build/Webhola-Setup-0.2.0-x64.exe'
+$setup = Join-Path $repo 'native/build/Webhola-Setup-0.2.1-x64.exe'
 $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText($setup+'.sha256',($hash+'  '+[IO.Path]::GetFileName($setup)+[Environment]::NewLine),(New-Object Text.UTF8Encoding $false))
