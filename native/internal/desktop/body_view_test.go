@@ -10,9 +10,31 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 
 	capturepkg "webhola/native/internal/capture"
 )
+
+func TestMySQLSQLLanguageHighlightsKeywords(t *testing.T) {
+	lang := mysqlSQLLanguage()
+	if lang == nil {
+		t.Fatal("SQL language is unavailable")
+	}
+	for _, line := range []string{"select id from users", "SHOW TABLES", "use mysql"} {
+		toks, _ := lang.Tokenizer.Tokenize(line, 0, nil)
+		start := 0
+		for _, tok := range toks {
+			word := strings.TrimSpace(strings.ToLower(line[start:tok.End]))
+			start = tok.End
+			if word == "" || word == "id" || word == "users" || word == "mysql" {
+				continue
+			}
+			if tok.Kind != editor.TokenKeyword {
+				t.Fatalf("%q in %q is not highlighted", word, line)
+			}
+		}
+	}
+}
 
 func TestJSONPrettyPreservesPayload(t *testing.T) {
 	source := `{"id":9007199254740993,"value":1.2300,"flags":[true,false,null],"name":"中文","text":"quote: \""}`
@@ -97,7 +119,7 @@ func TestImageBodyShowsMetadataAndPreview(t *testing.T) {
 	raw := data.Bytes()
 	a := newApp(context.Background())
 	m := capturepkg.Message{Line: "HTTP/1.1 200 OK", ContentType: "image/png", Body: hex.Dump(raw), RawBody: raw, Bytes: len(raw)}
-	a.bodyPreview = newBodyPreview("image-1", &m)
+	a.bodyPreview = newBodyPreview("image-1", &m, bodyModeDefault)
 	p := a.bodyPreview
 	if !p.image || p.imageSource == nil || p.imageWidth != 4 || p.imageHeight != 3 || p.imageMode != bodyImageInfo {
 		t.Fatalf("image metadata not decoded: %+v", p)
@@ -141,7 +163,7 @@ func frameHasColor(frame *image.RGBA, r, g, b uint8) bool {
 func TestBodyFullscreenKeepsContentAndCanExit(t *testing.T) {
 	a := newApp(context.Background())
 	m := capturepkg.Message{Line: "HTTP/1.1 200 OK", ContentType: "application/json", Body: "[" + strings.Repeat(`{"id":1},`, 300) + `{"id":2}]`}
-	p := newBodyPreview("response-42", &m)
+	p := newBodyPreview("response-42", &m, bodyModeDefault)
 	a.bodyPreview = p
 	a.openBodyFullscreen(p)
 	if a.bodyFullscreen == nil || a.bodyFullscreen == p || a.bodyFullscreen.editor == p.editor {

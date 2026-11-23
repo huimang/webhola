@@ -11,6 +11,8 @@ import (
 	_ "image/png"  // image.DecodeConfig
 	"mime"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -26,6 +28,15 @@ const (
 	bodyImagePreview
 )
 
+// bodyMode selects how a captured message is presented.
+const (
+	bodyModeDefault = iota
+	bodyModeSQL
+	bodyModeResult
+	bodyModeBinary
+	bodyModeCommand
+)
+
 // maxImagePixels bounds decoding of compressed payloads that expand into huge
 // bitmaps.
 const maxImagePixels = 64 << 20
@@ -38,7 +49,7 @@ var errImageTooLarge = errors.New("image is too large to preview")
 
 type bodyPreview struct {
 	key, source, contentType, text, note string
-	rawText, title                       string
+	rawText, title, headers              string
 	truncated, pretty                    bool
 	formatted                            bool
 	editor                               *editor.State
@@ -51,6 +62,11 @@ type bodyPreview struct {
 	imageSource                          ui.ImageSource
 	imageErr                             error
 	rawBody                              []byte
+	mode                                 int
+	table                                *ui.ListState
+	tableSel                             ui.Selection[int]
+	tableCols                            []ui.TableColumn
+	tableRows                            [][]string
 }
 
 func jsonEditorTheme(base *ui.Theme) *editor.Theme {
@@ -119,21 +135,172 @@ func formatBody(m *capturepkg.Message) (string, bool, string) {
 	return b.String(), true, "JSON · Pretty"
 }
 
-func newBodyPreview(key string, m *capturepkg.Message) *bodyPreview {
+func newBodyPreview(key string, m *capturepkg.Message, mode int) *bodyPreview {
 	if media, isImage := imageMediaType(m.ContentType); isImage && len(m.RawBody) > 0 {
 		return newImagePreview(key, m, media)
+	}
+	if mode == bodyModeBinary {
+		// Raw keeps the binary hex dump; the format view shows only readable
+		// strings: the prepared statement SQL, or the text found in the payload.
+		p := &bodyPreview{key: key, source: m.Body, headers: m.Headers, contentType: m.ContentType, truncated: m.Truncated, text: m.Body, rawText: m.Body, title: m.Line, mode: bodyModeBinary, pretty: true}
+		if sql, ok := strings.CutPrefix(m.Headers, "Statement: "); ok && sql != "" {
+			p.editor = &editor.State{Buffer: editor.NewBuffer(sql), ReadOnly: true, SoftWrap: true, NoScrollPastEnd: true, NoActiveLine: true, Label: i18npkg.MessageText("body_view.sql_body"), Theme: jsonEditorTheme(brandTheme(false))}
+			p.editor.Buffer.SetLanguage(mysqlSQLLanguage())
+		} else {
+			text := printableStrings(m.RawBody, 8192)
+			if text == "" {
+				text = i18npkg.MessageText("body_view.no_readable_text")
+			}
+			p.editor = &editor.State{Buffer: editor.NewBuffer(text), ReadOnly: true, SoftWrap: true, NoScrollPastEnd: true, NoActiveLine: true, Label: i18npkg.MessageText("body_view.readable_text"), Theme: jsonEditorTheme(brandTheme(false))}
+			p.editor.Buffer.SetLanguage(mysqlSQLLanguage())
+		}
+		return p
+	}
+	if mode == bodyModeCommand {
+		text := m.Body
+		if text == "" {
+			text = i18npkg.MessageText("body_view.no_body_captured_or_this_message_has")
+		}
+		p := &bodyPreview{key: key, source: m.Body, headers: m.Headers, contentType: m.ContentType, truncated: m.Truncated, text: text, rawText: text, pretty: true, title: m.Line, mode: bodyModeCommand}
+		p.editor = &editor.State{Buffer: editor.NewBuffer(text), ReadOnly: true, SoftWrap: true, NoScrollPastEnd: true, NoActiveLine: true, Label: i18npkg.MessageText("body_view.body"), Theme: jsonEditorTheme(brandTheme(false))}
+		return p
+	}
+	if mode == bodyModeSQL && m.Body != "" {
+		p := &bodyPreview{key: key, source: m.Body, headers: m.Headers, contentType: m.ContentType, truncated: m.Truncated, text: m.Body, rawText: m.Body, pretty: true, formatted: true, title: m.Line, mode: bodyModeSQL}
+		p.editor = &editor.State{Buffer: editor.NewBuffer(m.Body), ReadOnly: true, SoftWrap: true, NoScrollPastEnd: true, NoActiveLine: true, Label: i18npkg.MessageText("body_view.sql_body"), Theme: jsonEditorTheme(brandTheme(false))}
+		p.editor.Buffer.SetLanguage(mysqlSQLLanguage())
+		return p
+	}
+	if mode == bodyModeResult {
+		if header, rows, ok := parseMySQLRows(m.Body); ok && len(header) == mysqlColumnCount(m.Headers) {
+			p := &bodyPreview{key: key, source: m.Body, headers: m.Headers, contentType: m.ContentType, truncated: m.Truncated, text: m.Body, rawText: m.Body, pretty: true, formatted: true, title: m.Line, mode: bodyModeResult, tableRows: rows}
+			// Cell selection carries the framework's row striping.
+			p.table = &ui.ListState{Selection: &p.tableSel, CellSelect: true}
+			p.tableCols = make([]ui.TableColumn, len(header))
+			for i, name := range header {
+				p.tableCols[i] = ui.TableColumn{Title: name, ID: fmt.Sprintf("c%d", i), MinWidth: 60}
+			}
+			return p
+		}
 	}
 	text, pretty, note := formatBody(m)
 	raw := m.Body
 	if raw == "" {
 		raw = i18npkg.MessageText("body_view.no_body_captured_or_this_message_has")
 	}
-	p := &bodyPreview{key: key, source: m.Body, contentType: m.ContentType, truncated: m.Truncated, text: text, rawText: raw, pretty: pretty, note: note, title: m.Line}
+	p := &bodyPreview{key: key, source: m.Body, headers: m.Headers, contentType: m.ContentType, truncated: m.Truncated, text: text, rawText: raw, pretty: pretty, note: note, title: m.Line}
 	if pretty {
 		p.editor = &editor.State{Buffer: editor.NewBuffer(text), ReadOnly: true, SoftWrap: true, NoScrollPastEnd: true, NoActiveLine: true, Label: i18npkg.MessageText("body_view.http_body"), Theme: jsonEditorTheme(brandTheme(false))}
 		p.editor.Buffer.SetLanguage(editor.LanguageNamed("json"))
 	}
 	return p
+}
+
+// mysqlKeywords are MySQL statements and clauses the editor's SQL language
+// does not know, so highlighting covers them too.
+var mysqlKeywords = map[string]bool{
+	"show": true, "tables": true, "databases": true, "columns": true, "status": true,
+	"variables": true, "processlist": true, "use": true, "describe": true, "kill": true,
+	"lock": true, "unlock": true, "call": true, "declare": true, "cursor": true,
+	"handler": true, "loop": true, "repeat": true, "while": true, "iterate": true,
+	"leave": true, "signal": true, "resignal": true, "savepoint": true, "release": true,
+	"delimiter": true, "engine": true, "auto_increment": true, "unsigned": true,
+	"zerofill": true, "charset": true, "collate": true, "partition": true,
+	"ignore": true, "low_priority": true, "high_priority": true, "straight_join": true,
+	"outfile": true, "dumpfile": true, "duplicate": true, "value": true, "rows": true,
+	"found_rows": true, "last_insert_id": true, "interval": true, "sql_no_cache": true,
+	"sql_cache": true,
+}
+
+// mysqlSQLLanguage extends the SQL language with the MySQL keywords above.
+func mysqlSQLLanguage() *editor.Language {
+	base := editor.LanguageNamed("sql")
+	if base == nil {
+		return nil
+	}
+	lang := *base
+	inner := base.Tokenizer
+	lang.Tokenizer = editor.TokenizerFunc(func(line string, state uint64, tokens []editor.Token) ([]editor.Token, uint64) {
+		first := len(tokens)
+		tokens, next := inner.Tokenize(line, state, tokens)
+		start := 0
+		for i := first; i < len(tokens); i++ {
+			end := tokens[i].End
+			if end < start || end > len(line) {
+				start = end
+				continue
+			}
+			switch tokens[i].Kind {
+			case editor.TokenString, editor.TokenComment, editor.TokenNumber:
+			default:
+				if mysqlKeywords[strings.ToLower(line[start:end])] {
+					tokens[i].Kind = editor.TokenKeyword
+				}
+			}
+			start = end
+		}
+		return tokens, next
+	})
+	return &lang
+}
+
+// printableStrings extracts runs of readable text from a binary payload, so
+// the format view can show string values without the hex dump.
+func printableStrings(raw []byte, limit int) string {
+	var out, run []rune
+	flush := func() {
+		if len(run) >= 2 && len(out) < limit {
+			out = append(out, run...)
+			out = append(out, '\n')
+		}
+		run = run[:0]
+	}
+	for len(raw) > 0 && len(out) < limit {
+		r, size := utf8.DecodeRune(raw)
+		if r == utf8.RuneError && size == 1 {
+			flush()
+			raw = raw[1:]
+			continue
+		}
+		if unicode.IsPrint(r) {
+			run = append(run, r)
+		} else {
+			flush()
+		}
+		raw = raw[size:]
+	}
+	flush()
+	return string(out)
+}
+
+// mysqlColumnCount reads the column count from the captured result headers.
+func mysqlColumnCount(headers string) int {
+	names, ok := strings.CutPrefix(headers, "Columns: ")
+	if !ok || names == "" {
+		return 0
+	}
+	return len(strings.Split(names, ", "))
+}
+
+// parseMySQLRows splits the tab-separated result preview into a header and
+// rows. Empty cells stay empty; the preview already turned embedded tabs and
+// newlines into spaces.
+func parseMySQLRows(body string) ([]string, [][]string, bool) {
+	body = strings.TrimRight(body, "\n")
+	if body == "" {
+		return nil, nil, false
+	}
+	lines := strings.Split(body, "\n")
+	header := strings.Split(lines[0], "\t")
+	rows := make([][]string, 0, len(lines)-1)
+	for _, line := range lines[1:] {
+		cells := strings.Split(line, "\t")
+		if len(cells) > len(header) {
+			cells = cells[:len(header)]
+		}
+		rows = append(rows, cells)
+	}
+	return header, rows, true
 }
 
 func imageMediaType(contentType string) (string, bool) {
@@ -201,10 +368,10 @@ func formatByteSize(bytes int) string {
 	}
 }
 
-func (a *app) bodyView(c *ui.Context, key string, m *capturepkg.Message) {
+func (a *app) bodyView(c *ui.Context, key string, m *capturepkg.Message, mode int) {
 	p := a.bodyPreview
-	if p == nil || p.key != key || p.source != m.Body || p.contentType != m.ContentType || p.truncated != m.Truncated {
-		p = newBodyPreview(key, m)
+	if p == nil || p.key != key || p.source != m.Body || p.contentType != m.ContentType || p.truncated != m.Truncated || p.mode != mode || p.headers != m.Headers {
+		p = newBodyPreview(key, m, mode)
 		a.bodyPreview = p
 	}
 	a.bodyToolbar(c, p, false)
@@ -221,7 +388,11 @@ func (a *app) bodyToolbar(c *ui.Context, p *bodyPreview, fullscreen bool) {
 			if ui.Button(c, a.tr("body_view.raw")).Selected(!p.formatted).Clicked() {
 				p.formatted = false
 			}
-			if ui.Button(c, a.tr("body_view.format")).Selected(p.formatted).Disabled(!p.pretty).Clicked() {
+			formatLabel := "body_view.format"
+			if p.mode == bodyModeResult {
+				formatLabel = "body_view.table"
+			}
+			if ui.Button(c, a.tr(formatLabel)).Selected(p.formatted).Disabled(!p.pretty).Clicked() {
 				p.formatted = true
 			}
 		}
@@ -231,7 +402,7 @@ func (a *app) bodyToolbar(c *ui.Context, p *bodyPreview, fullscreen bool) {
 				a.closeBodyFullscreen()
 			}
 		} else {
-			if ui.Button(c, a.tr("body_view.full_screen")).Disabled(p.source == "").Clicked() {
+			if ui.Button(c, a.tr("body_view.full_screen")).Disabled(p.source == "" && p.editor == nil).Clicked() {
 				a.openBodyFullscreen(p)
 			}
 		}
@@ -253,6 +424,14 @@ func (a *app) renderBody(c *ui.Context, p *bodyPreview) {
 		}
 		ui.Text(c, a.tr(p.note)).FontSize(12).TextColor(color)
 	}
+	if p.mode == bodyModeResult {
+		if p.formatted {
+			a.renderResultTable(c, p)
+		} else {
+			a.renderRawText(c, p)
+		}
+		return
+	}
 	if p.pretty && p.formatted {
 		p.editor.Theme = jsonEditorTheme(c.Theme())
 		p.editor.Label = a.tr(p.viewerLabel())
@@ -260,6 +439,19 @@ func (a *app) renderBody(c *ui.Context, p *bodyPreview) {
 	} else {
 		a.renderRawText(c, p)
 	}
+}
+
+func (a *app) renderResultTable(c *ui.Context, p *bodyPreview) {
+	// Zebra rows: every other row gets a faint tint. Chosen cells keep the
+	// table's own colors, so striping adds no visible selection effect.
+	theme := c.Theme()
+	p.table.CellsStyle = ui.CellsStyle{Cell: theme.Surface, CellText: theme.Text, Stripe: theme.Text.Alpha(0.04)}
+	rows := p.tableRows
+	ui.Table(c.Key(p.key+"-table"), p.table, p.tableCols, len(rows), func(row, col int) {
+		if row < len(rows) && col < len(rows[row]) {
+			ui.Text(c, rows[row][col]).SingleLine()
+		}
+	}).FillWidth().Grow(1).MinHeight(100).Border(1, c.Theme().Border).Radius(8)
 }
 
 func (a *app) renderRawText(c *ui.Context, p *bodyPreview) {
@@ -315,6 +507,12 @@ func (p *bodyPreview) viewerLabel() string {
 	if p.labelKey != "" {
 		return p.labelKey
 	}
+	switch p.mode {
+	case bodyModeSQL:
+		return "body_view.sql_body"
+	case bodyModeResult:
+		return "body_view.result_set"
+	}
 	return "body_view.http_body"
 }
 
@@ -331,7 +529,7 @@ func (a *app) openBodyFullscreen(p *bodyPreview) {
 		return
 	}
 	// Each native window owns its editor state; keep the selected message as a snapshot.
-	copy := newBodyPreview(p.key, &capturepkg.Message{Line: p.title, Body: p.source, RawBody: p.rawBody, ContentType: p.contentType, Truncated: p.truncated, Bytes: p.imageBytes})
+	copy := newBodyPreview(p.key, &capturepkg.Message{Line: p.title, Body: p.source, Headers: p.headers, RawBody: p.rawBody, ContentType: p.contentType, Truncated: p.truncated, Bytes: p.imageBytes}, p.mode)
 	copy.formatted = p.formatted
 	copy.imageMode = p.imageMode
 	copy.parent = p.parent

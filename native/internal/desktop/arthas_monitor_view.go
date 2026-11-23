@@ -271,7 +271,7 @@ func (a *app) arthasCallDetails(c *ui.Context, s *arthasState) {
 			partKey = "arthas_monitor.exception"
 		}
 		title := i18npkg.MessageText("arthas_monitor.payload_title", r.Method.ClassName+"#"+r.Method.MethodName, i18npkg.MessageText(partKey))
-		s.preview = newBodyPreview(key, &capturepkg.Message{Line: title, Body: text, ContentType: contentType})
+		s.preview = newBodyPreview(key, &capturepkg.Message{Line: title, Body: text, ContentType: contentType}, bodyModeDefault)
 		s.preview.formatted = s.preview.pretty
 		s.preview.parent = a.win
 		s.preview.labelKey = "arthas_monitor.payload"

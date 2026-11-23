@@ -72,6 +72,7 @@ type app struct {
 	port, iface, search, tab, status, pcap string
 	deviceList                             []capturepkg.Device
 	running, refreshing, failed, stopping  bool
+	hidePing                               bool
 }
 
 func newApp(ctx context.Context) *app {
@@ -145,6 +146,14 @@ func (a *app) start() {
 		return
 	}
 	logger, closeLog := openCaptureLog()
+	// Detect MySQL when capture starts: connections may already be established,
+	// and their initial handshake is then outside the capture window.
+	if a.pcap == "" {
+		cfg.MySQL = capturepkg.ProbeMySQL(cfg.TCPPort)
+		if logger != nil {
+			logger.Printf("probe tcp port %d mysql=%v", cfg.TCPPort, cfg.MySQL)
+		}
+	}
 	if logger != nil {
 		cfg.Logf = logger.Printf
 	}
@@ -259,8 +268,22 @@ func (a *app) clear() {
 }
 
 func (a *app) matches(e capturepkg.Exchange) bool {
+	if a.hidePing && e.Protocol == "mysql" && e.Method == "COM_PING" {
+		return false
+	}
 	q := strings.ToLower(strings.TrimSpace(a.search))
 	return q == "" || strings.Contains(strings.ToLower(fmt.Sprintf("%s %s %d %s %s", e.Method, e.URL, e.Status, e.Client, e.Server)), q)
+}
+
+// hasMySQL reports whether the list contains MySQL records, which is when the
+// PING filter is useful.
+func (a *app) hasMySQL() bool {
+	for _, e := range a.entries {
+		if e.Protocol == "mysql" {
+			return true
+		}
+	}
+	return false
 }
 
 func responseLabel(e capturepkg.Exchange) string {
@@ -270,7 +293,52 @@ func responseLabel(e capturepkg.Exchange) string {
 	if e.Response == nil {
 		return i18npkg.MessageText("main.waiting_for_response")
 	}
+	if e.Protocol == "mysql" {
+		status := i18npkg.MessageText("mysql.ok")
+		if e.Status >= 400 {
+			status = i18npkg.MessageText("mysql.err_label")
+		}
+		return fmt.Sprintf("%s · %.1f ms · %d B", status, float64(e.Duration)/float64(time.Millisecond), e.Response.Bytes)
+	}
 	return fmt.Sprintf("%d · %.1f ms · %d B", e.Status, float64(e.Duration)/float64(time.Millisecond), e.Response.Bytes)
+}
+
+// mysqlKind reduces a MySQL record to a short request type such as SELECT,
+// UPDATE or PING. The full SQL stays in the details body and search index.
+func mysqlKind(e capturepkg.Exchange) string {
+	if e.Method != "COM_QUERY" {
+		switch e.Method {
+		case "COM_STMT_PREPARE":
+			return "PREPARE"
+		case "COM_STMT_EXECUTE":
+			return "EXECUTE"
+		case "COM_STMT_FETCH":
+			return "FETCH"
+		case "COM_STMT_CLOSE":
+			return "CLOSE"
+		case "COM_STMT_RESET":
+			return "RESET"
+		case "COM_STMT_SEND_LONG_DATA":
+			return "LONG DATA"
+		case "COM_INIT_DB":
+			return "USE"
+		case "COM_FIELD_LIST":
+			return "FIELDS"
+		}
+		if strings.HasPrefix(e.Method, "COM_") {
+			return strings.TrimPrefix(e.Method, "COM_")
+		}
+		return e.Method
+	}
+	fields := strings.Fields(e.URL)
+	if len(fields) == 0 {
+		return "QUERY"
+	}
+	word := strings.ToUpper(fields[0])
+	if len(word) > 16 || strings.Trim(word, "ABCDEFGHIJKLMNOPQRSTUVWXYZ_") != "" {
+		return "QUERY"
+	}
+	return word
 }
 
 func (a *app) view(c *ui.Context) {
@@ -454,6 +522,9 @@ func (a *app) httpView(c *ui.Context) {
 					}
 				})
 				ui.TextInput(c.Key("search"), &a.search).FillWidth().Placeholder(a.tr("main.search_url_method_status_code_or_ip")).Label(a.tr("main.search_requests"))
+				if a.hasMySQL() {
+					ui.Checkbox(c, &a.hidePing, a.tr("main.hide_ping"))
+				}
 				ui.Scroll(c.Key("requests")).FillWidth().Grow(1).Children(func() {
 					ui.Column(c).FillWidth().Gap(6).Children(func() {
 						if len(a.entries) == 0 {
@@ -471,17 +542,25 @@ func (a *app) httpView(c *ui.Context) {
 							if e.ID == a.selected {
 								bg = c.Theme().Selection
 							}
-							row := ui.Column(c.Key(fmt.Sprintf("request-%d", e.ID))).FillWidth().Padding(12).Gap(4).Radius(8).Background(bg).Border(1, c.Theme().Border).OnClick(func() { a.selected = e.ID }).Label(fmt.Sprintf("%s %s", e.Method, e.URL))
+							labelText, subtitle := e.Method, e.URL
+							rowLabel := fmt.Sprintf("%s %s", e.Method, e.URL)
+							if e.Protocol == "mysql" {
+								labelText, subtitle = mysqlKind(e), ""
+								rowLabel = labelText
+							}
+							row := ui.Column(c.Key(fmt.Sprintf("request-%d", e.ID))).FillWidth().Padding(12).Gap(4).Radius(8).Background(bg).Border(1, c.Theme().Border).OnClick(func() { a.selected = e.ID }).Label(rowLabel)
 							row.Children(func() {
 								ui.Row(c).FillWidth().Gap(8).Children(func() {
-									ui.Text(c, e.Method).Bold().TextColor(c.Theme().Accent)
+									ui.Text(c, labelText).Bold().TextColor(c.Theme().Accent)
 									if e.Replayed {
 										ui.Text(c, a.tr("main.resent")).FontSize(11).TextColor(c.Theme().TextMuted)
 									}
 									ui.Box(c).Grow(1)
 									ui.Text(c, e.Started.Local().Format("15:04:05.000")).FontSize(11).TextColor(c.Theme().TextMuted)
 								})
-								ui.Text(c, e.URL).FontSize(13)
+								if subtitle != "" {
+									ui.Text(c, subtitle).FontSize(13)
+								}
 								col := c.Theme().TextMuted
 								if e.Status >= 400 {
 									col = c.Theme().Warning
@@ -495,12 +574,14 @@ func (a *app) httpView(c *ui.Context) {
 								ui.Row(c).FillWidth().Gap(8).Children(func() {
 									ui.Text(c, a.tr(responseLabel(e))).FontSize(12).TextColor(col)
 									ui.Box(c).Grow(1)
-									label := i18npkg.MessageText("main.resend")
-									if a.replaying && a.replayFrom == e.ID {
-										label = i18npkg.MessageText("main.sending")
-									}
-									if ui.Button(c.Key(fmt.Sprintf("replay-%d", e.ID)), a.tr(label)).Disabled(a.replaying).Clicked() {
-										a.resend(e)
+									if e.Protocol != "mysql" {
+										label := i18npkg.MessageText("main.resend")
+										if a.replaying && a.replayFrom == e.ID {
+											label = i18npkg.MessageText("main.sending")
+										}
+										if ui.Button(c.Key(fmt.Sprintf("replay-%d", e.ID)), a.tr(label)).Disabled(a.replaying).Clicked() {
+											a.resend(e)
+										}
 									}
 								})
 							})
@@ -544,7 +625,14 @@ func (a *app) details(c *ui.Context) {
 		ui.Text(c, a.tr("main.only_captured_plain_http_traffic_is_shown")).TextColor(c.Theme().TextMuted)
 		return
 	}
-	ui.Text(c, e.Method+"  "+e.URL).FontSize(16).Bold().Selectable()
+	title := e.Method + "  " + e.URL
+	if e.Protocol == "mysql" {
+		title = mysqlKind(*e)
+		if command := strings.TrimPrefix(e.Method, "COM_"); command != title {
+			title += "  ·  " + e.Method
+		}
+	}
+	ui.Text(c, title).FontSize(16).Bold().Selectable()
 	connection := e.Client + "  →  " + e.Server + "   ·   TCP #" + e.Stream
 	if e.Replayed {
 		connection = a.tr("main.resend")
@@ -553,17 +641,28 @@ func (a *app) details(c *ui.Context) {
 		}
 	}
 	ui.Text(c, connection).FontSize(12).TextColor(c.Theme().TextMuted).Selectable()
+	mysql := e.Protocol == "mysql"
+	tabs := []string{"http.request", "http.response"}
+	headersLabel, headersAreaLabel := "main.start_line_and_headers", "main.http_start_line_and_headers"
+	if mysql {
+		tabs = []string{"mysql.request", "mysql.response"}
+		headersLabel, headersAreaLabel = "mysql.packet", "mysql.packet"
+	}
+	tab := a.tab
+	if tab != tabs[0] && tab != tabs[1] {
+		tab = tabs[0]
+	}
 	ui.Row(c).Gap(8).Children(func() {
-		for _, tab := range []string{"http.request", "http.response"} {
-			if ui.Button(c, a.tr(tab)).Selected(a.tab == tab).Clicked() {
-				a.tab = tab
+		for _, name := range tabs {
+			if ui.Button(c, a.tr(name)).Selected(tab == name).Clicked() {
+				a.tab = name
 			}
 		}
 		ui.Box(c).Grow(1)
 		ui.Text(c, a.tr(responseLabel(*e))).FontSize(13).TextColor(c.Theme().TextMuted)
 	})
 	m := &e.Request
-	if a.tab == "http.response" {
+	if tab == tabs[1] {
 		m = e.Response
 		if m == nil {
 			if e.Error != "" {
@@ -579,21 +678,34 @@ func (a *app) details(c *ui.Context) {
 			return
 		}
 	}
-	if a.tab == "http.response" && len(e.Interim) > 0 {
+	if tab == tabs[1] && len(e.Interim) > 0 {
 		ui.Textf(c, a.tr("main.interim_responses_v"), e.Interim).TextColor(c.Theme().TextMuted)
 	}
 	if e.Error != "" {
 		ui.Text(c, a.tr(e.Error)).TextColor(c.Theme().Danger)
 	}
-	ui.Text(c, a.tr("main.start_line_and_headers")).Bold()
+	ui.Text(c, a.tr(headersLabel)).Bold()
 	headers := m.Line + "\r\n" + m.Headers
-	ui.TextArea(c.Key(fmt.Sprintf("headers-%d-%s", e.ID, a.tab)), &headers).ReadOnly(true).FillWidth().Height(180).Font("Consolas").FontSize(13).Label(a.tr("main.http_start_line_and_headers"))
+	ui.TextArea(c.Key(fmt.Sprintf("headers-%d-%s", e.ID, tab)), &headers).ReadOnly(true).FillWidth().Height(180).Font("Consolas").FontSize(13).Label(a.tr(headersAreaLabel))
 	ui.Row(c).FillWidth().Children(func() {
 		ui.Text(c, a.tr("body_view.body")).Bold()
 		ui.Box(c).Grow(1)
 		ui.Textf(c, a.tr("body_view.content_type_and_size"), m.ContentType, m.Bytes).FontSize(12).TextColor(c.Theme().TextMuted)
 	})
-	a.bodyView(c, fmt.Sprintf("body-%d-%s", e.ID, a.tab), m)
+	mode := bodyModeDefault
+	if mysql {
+		switch {
+		case tab == tabs[0] && m.Binary:
+			mode = bodyModeBinary
+		case tab == tabs[0] && (e.Method == "COM_QUERY" || e.Method == "COM_STMT_PREPARE"):
+			mode = bodyModeSQL
+		case tab == tabs[0]:
+			mode = bodyModeCommand
+		case tab == tabs[1] && strings.HasPrefix(m.Headers, "Columns: "):
+			mode = bodyModeResult
+		}
+	}
+	a.bodyView(c, fmt.Sprintf("body-%d-%s", e.ID, tab), m, mode)
 }
 
 func Run() {
