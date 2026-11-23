@@ -21,7 +21,7 @@ func (a *app) arthasView(c *ui.Context) {
 	}
 	ui.Column(c).FillWidth().FillHeight().Gap(0).Children(func() {
 		ui.Column(c).FillWidth().Padding(12, 20).Gap(8).Children(func() {
-			ui.Text(c, a.tr("arthas_ui.jvm_routes_and_tracing")).FontSize(20).Bold()
+			ui.Text(c, a.tr("arthas_ui.jvm_routes_and_tracing")).FontSize(18).Bold()
 			ui.Row(c).FillWidth().Gap(16).Children(func() {
 				ui.Column(c.Key("jvm-controls")).Grow(1).Gap(8).Children(func() { a.arthasControls(c, s) })
 				if s.target.PID != 0 {
@@ -100,23 +100,23 @@ func (a *app) arthasControls(c *ui.Context, s *arthasState) {
 		ui.Select(c.Key("java-loader"), &s.method.Loader, s.methodLoaders()).Width(140).Label(a.tr("arthas_monitor.classloader")).Disabled(s.busy)
 	})
 	ui.Row(c).FillWidth().Gap(8).Children(func() {
-		if ui.Button(c, a.tr("arthas_ui.stop_operation")).Disabled(!s.busy).Clicked() {
-			if s.opCancel != nil {
-				s.opCancel()
-			}
-		}
 		if ui.Button(c, a.tr("arthas_ui.watch")).Disabled(s.busy || s.connection() == nil || s.method.MethodName == "" || unavailable).Clicked() {
 			a.observeArthas(s, "watch")
 		}
 		if ui.Button(c, a.tr("arthas_ui.trace")).Disabled(s.busy || s.connection() == nil || s.method.MethodName == "" || unavailable).Clicked() {
 			a.observeArthas(s, "trace")
 		}
+		if ui.Button(c, a.tr("arthas_ui.stop_operation")).Disabled(!s.busy).Clicked() {
+			if s.opCancel != nil {
+				s.opCancel()
+			}
+		}
 	})
 }
 
 func (a *app) arthasCallList(c *ui.Context, s *arthasState) {
 	ui.Row(c).FillWidth().Gap(8).Children(func() {
-		ui.Text(c, a.tr("arthas_monitor.calls")).FontSize(17).Bold()
+		ui.Text(c, a.tr("arthas_monitor.calls")).FontSize(14).Bold()
 		ui.Box(c).Grow(1)
 		if ui.Button(c, a.tr("main.clear")).Clicked() {
 			s.clearRecords()
@@ -168,13 +168,13 @@ func (a *app) arthasCallList(c *ui.Context, s *arthasState) {
 func (a *app) arthasCallDetails(c *ui.Context, s *arthasState) {
 	r := s.selectedCall()
 	if r == nil {
-		ui.Text(c, a.tr("arthas_monitor.select_call")).FontSize(22).Bold()
+		ui.Text(c, a.tr("arthas_monitor.select_call")).FontSize(18).Bold()
 		ui.Text(c, a.tr("arthas_monitor.detail_hint")).TextColor(c.Theme().TextMuted)
 		return
 	}
 	name := r.Method.ClassName + "#" + r.Method.MethodName
 	ui.Row(c).FillWidth().Gap(6).Children(func() {
-		ui.Text(c, name).FontSize(18).Bold().Selectable().Shrink(1)
+		ui.Text(c, name).FontSize(16).Bold().Selectable().Shrink(1)
 		a.javaSourceIcon(c, s, r.Method, "source-call-class", 0)
 		ui.Box(c).Grow(1)
 	})

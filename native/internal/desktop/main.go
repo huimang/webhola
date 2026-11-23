@@ -315,27 +315,93 @@ func (a *app) view(c *ui.Context) {
 	})
 }
 
+// adapterSelect lists recommended adapters first, then the VPN and virtual
+// ones below a separator, so none of them are hidden.
+func (a *app) adapterSelect(c *ui.Context) {
+	theme := c.Theme()
+	disabled := a.running || a.refreshing || a.pcap != ""
+	sel := ui.SelectBase(c.Key("interface"), &a.iface)
+	sel.Trigger.Width(200).MinWidth(160).Padding(theme.Space(1.5), theme.Space(3.5)).Gap(theme.Space(1.5)).
+		Radius(theme.Radius).Background(theme.Surface).TextColor(theme.Text).Border(1, theme.Border).
+		Justify(ui.SpaceBetween).Label(a.tr("main.capture_adapter")).Disabled(disabled).
+		Children(func() {
+			label, color := a.iface, theme.Text
+			if label == "" {
+				label, color = a.tr("main.select_network_adapter"), theme.TextMuted
+			}
+			ui.Text(c, label).SingleLine().TextColor(color)
+			ui.Text(c, "⌄").TextColor(theme.TextMuted)
+		})
+	var preferred, others []capturepkg.Device
+	for _, d := range a.deviceList {
+		if d.Preferred {
+			preferred = append(preferred, d)
+		} else {
+			others = append(others, d)
+		}
+	}
+	placeholder := a.tr("main.select_network_adapter")
+	sel.Popup(func(panel ui.Element) {
+		panel.Margin(theme.Space(1), 0, 0, 0).Padding(theme.Space(1)).Radius(theme.Radius+2).
+			Background(theme.Background).Border(1, theme.Border).
+			Shadow(0, 6, 20, 0, ui.RGBA(0, 0, 0, 0.18))
+		ui.Scroll(c).MaxHeight(240).Children(func() {
+			ui.Column(c).FillWidth().Children(func() {
+				if a.iface == "" {
+					row := sel.Item(placeholder).Padding(theme.Space(1.5), theme.Space(2.5)).Radius(theme.Radius).
+						TextColor(theme.TextMuted)
+					if row.Highlighted() {
+						row.Background(theme.Accent).TextColor(theme.AccentText)
+					}
+					row.Children(func() { ui.Text(c, placeholder).SingleLine() })
+				}
+				item := func(d capturepkg.Device) {
+					row := sel.Item(d.Label).Padding(theme.Space(1.5), theme.Space(2.5)).Radius(theme.Radius)
+					switch {
+					case row.Highlighted():
+						row.Background(theme.Accent).TextColor(theme.AccentText)
+					case d.Label == a.iface:
+						row.Background(theme.Surface)
+					}
+					row.Children(func() { ui.Text(c, d.Label).SingleLine() })
+				}
+				for _, d := range preferred {
+					item(d)
+				}
+				if len(preferred) > 0 && len(others) > 0 {
+					ui.Row(c).FillWidth().Padding(theme.Space(1), theme.Space(2)).Children(func() {
+						ui.Box(c).FillWidth().Height(1).Background(theme.Border)
+					})
+				}
+				for _, d := range others {
+					item(d)
+				}
+			})
+		})
+	})
+	if sel.Trigger.Changed() {
+		if a.iface == placeholder {
+			a.iface = ""
+		} else {
+			a.ifaceManual = true
+			if a.serviceChoice != "" {
+				a.applyServiceEndpoint()
+			}
+		}
+	}
+}
+
 func (a *app) httpView(c *ui.Context) {
 	ui.Column(c).FillWidth().FillHeight().Gap(0).Children(func() {
-		ui.Column(c).FillWidth().Padding(16, 24).Gap(10).Children(func() {
-			a.serviceScanView(c)
-			ui.Row(c).Gap(10).FillWidth().Children(func() {
+		ui.Column(c).FillWidth().Padding(10, 20).Gap(8).Children(func() {
+			ui.Row(c).Gap(8).FillWidth().Children(func() {
 				ui.Text(c, a.tr("main.network_adapter")).Bold()
-				var opts []string
-				for _, d := range a.deviceList {
-					opts = append(opts, d.Label)
-				}
-				if ui.Select(c.Key("interface"), &a.iface, opts).Grow(1).MinWidth(220).Label(a.tr("main.capture_adapter")).Disabled(a.running || a.refreshing || a.pcap != "").Changed() {
-					a.ifaceManual = true
-					if a.serviceChoice != "" {
-						a.applyServiceEndpoint()
-					}
-				}
+				a.adapterSelect(c)
 				if ui.Button(c, a.tr("main.refresh_adapters")).Disabled(a.running || a.refreshing || a.pcap != "").Clicked() {
 					a.refresh()
 				}
 				ui.Text(c, a.tr("main.port")).Bold()
-				if ui.TextInput(c.Key("port"), &a.port).Width(85).Label(a.tr("main.http_port")).Disabled(a.running).Changed() {
+				if ui.TextInput(c.Key("port"), &a.port).Width(64).Label(a.tr("main.http_port")).Disabled(a.running).Changed() {
 					a.serviceChoice = ""
 				}
 				label := i18npkg.MessageText("main.start_capture")
@@ -357,6 +423,8 @@ func (a *app) httpView(c *ui.Context) {
 						a.start()
 					}
 				}
+				ui.Box(c).Grow(1)
+				a.serviceScanControls(c)
 			})
 			color := c.Theme().TextMuted
 			if a.failed {
@@ -364,13 +432,21 @@ func (a *app) httpView(c *ui.Context) {
 			} else if a.running {
 				color = c.Theme().Accent
 			}
-			ui.Text(c, a.tr(a.status)).FontSize(13).TextColor(color).Role(ui.RoleStatus)
+			hint := "service_scan.click_scan_to_send_head_probes_to"
+			if a.scanStatus != "" {
+				hint = a.scanStatus
+			}
+			line := a.tr(hint)
+			if a.status != "" {
+				line += " · " + a.tr(a.status)
+			}
+			ui.Text(c, line).FontSize(12).TextColor(color).SingleLine().Role(ui.RoleStatus)
 		})
 		ui.Box(c).FillWidth().Height(1).Background(c.Theme().Border)
 		ui.Row(c).FillWidth().Grow(1).Gap(1).Background(c.Theme().Border).Children(func() {
 			ui.Column(c).Width(390).FillHeight().Padding(16).Gap(12).Background(c.Theme().Surface).Children(func() {
 				ui.Row(c).FillWidth().Gap(10).Children(func() {
-					ui.Text(c, a.tr("main.requests")).FontSize(17).Bold()
+					ui.Text(c, a.tr("main.requests")).FontSize(14).Bold()
 					ui.Box(c).Grow(1)
 					ui.Textf(c, a.tr("main.record_count"), a.visibleCount(), len(a.entries)).TextColor(c.Theme().TextMuted)
 					if ui.Button(c, a.tr("main.clear")).Clicked() {
@@ -461,14 +537,14 @@ func (a *app) details(c *ui.Context) {
 		}
 	}
 	if e == nil {
-		ui.Text(c, a.tr("main.inspect_an_http_exchange")).FontSize(22).Bold()
+		ui.Text(c, a.tr("main.inspect_an_http_exchange")).FontSize(18).Bold()
 		ui.Text(c, a.tr("main.select_a_request_on_the_left_to")).TextColor(c.Theme().TextMuted)
 		ui.Box(c).Height(16)
 		ui.Text(c, a.tr("main.capture_traffic_on_existing_ports_without_changing")).TextColor(c.Theme().TextMuted)
 		ui.Text(c, a.tr("main.only_captured_plain_http_traffic_is_shown")).TextColor(c.Theme().TextMuted)
 		return
 	}
-	ui.Text(c, e.Method+"  "+e.URL).FontSize(18).Bold().Selectable()
+	ui.Text(c, e.Method+"  "+e.URL).FontSize(16).Bold().Selectable()
 	connection := e.Client + "  →  " + e.Server + "   ·   TCP #" + e.Stream
 	if e.Replayed {
 		connection = a.tr("main.resend")

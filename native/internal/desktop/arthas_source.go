@@ -188,7 +188,7 @@ func (a *app) javaSourceView(c *ui.Context, v *javaSourceViewer) {
 		return
 	}
 	ui.Column(c).FillWidth().FillHeight().Padding(20).Gap(12).Children(func() {
-		ui.Text(c, v.method.ClassName).FontSize(18).Bold().Selectable()
+		ui.Text(c, v.method.ClassName).FontSize(16).Bold().Selectable()
 		ui.Text(c, a.tr("source.decompiled_hint")).FontSize(12).TextColor(c.Theme().TextMuted)
 		if len(v.loaders) > 1 {
 			ui.Row(c).FillWidth().Gap(8).Children(func() {

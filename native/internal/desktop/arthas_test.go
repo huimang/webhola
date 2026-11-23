@@ -211,7 +211,9 @@ func TestArthasEntryRequiresKnownJVM(t *testing.T) {
 			if tc.selected {
 				a.serviceChoice = s.Key()
 			}
-			tt := ui.NewTester(a.serviceScanView, 1200, 100)
+			tt := ui.NewTester(func(c *ui.Context) {
+				ui.Row(c).FillWidth().Children(func() { a.serviceScanControls(c) })
+			}, 1200, 100)
 			if tt.HasText("JVM 路由与跟踪…") != tc.want {
 				t.Fatal("Arthas entry visible for an unconfirmed target")
 			}

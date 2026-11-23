@@ -13,13 +13,14 @@ type loadingDialog struct {
 	window           *mygo.Window
 	active, stopping bool
 	title, hint      string
+	progressHint     string
 	status           func() string
 	cancel           func()
 	completed, total int
 }
 
 func (a *app) openLoading(parent *mygo.Window, title, hint string, status func() string, cancel func(), steps ...int) *loadingDialog {
-	d := &loadingDialog{active: true, title: title, hint: hint, status: status, cancel: cancel}
+	d := &loadingDialog{active: true, title: title, hint: hint, progressHint: "loading.stage_progress_hint", status: status, cancel: cancel}
 	if len(steps) > 0 {
 		d.total = steps[0]
 	}
@@ -69,7 +70,7 @@ func (a *app) loadingView(c *ui.Context, d *loadingDialog) {
 	ui.Column(c).FillWidth().FillHeight().Padding(24).Gap(16).Children(func() {
 		ui.Row(c).Gap(12).Children(func() {
 			ui.Spinner(c).Label(a.tr(d.title))
-			ui.Text(c, a.tr(d.title)).FontSize(18).Bold()
+			ui.Text(c, a.tr(d.title)).FontSize(16).Bold()
 		})
 		status := ""
 		if d.status != nil {
@@ -81,7 +82,7 @@ func (a *app) loadingView(c *ui.Context, d *loadingDialog) {
 		ui.Text(c, a.tr(status)).Role(ui.RoleStatus)
 		if d.total > 0 {
 			a.loadingProgress(c, d)
-			ui.Text(c, a.tr("loading.stage_progress_hint")).FontSize(12).TextColor(c.Theme().TextMuted)
+			ui.Text(c, a.tr(d.progressHint)).FontSize(12).TextColor(c.Theme().TextMuted)
 		}
 		ui.Text(c, a.tr(d.hint)).TextColor(c.Theme().TextMuted)
 		ui.Box(c).Grow(1)

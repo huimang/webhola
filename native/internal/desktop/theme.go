@@ -60,6 +60,8 @@ func brandTheme(dark bool) *ui.Theme {
 		t.Warning = ui.Hex("#F6C177")
 		t.Success = ui.Hex("#7EE2A8")
 	}
+	// 与 IDEA 默认一致，正文基准使用 13 DIP，而不是 MyGO 的 14。
+	t.FontSize = 13
 	t.Focus = t.Accent
 	t.FocusRingWidth = 2
 	return t

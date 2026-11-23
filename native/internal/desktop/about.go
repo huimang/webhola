@@ -29,7 +29,7 @@ func (a *app) aboutView(c *ui.Context) {
 				ui.Row(c).FillWidth().Gap(14).Children(func() {
 					ui.Image(c, appIcon).Width(60).Height(60).Label(a.tr("about.webhola_icon"))
 					ui.Column(c).Gap(4).Children(func() {
-						ui.Text(c, a.tr("common.product_name")).FontSize(26).Bold()
+						ui.Text(c, a.tr("common.product_name")).FontSize(22).Bold()
 						ui.Text(c, a.tr(i18npkg.MessageText("about.version")+appVersion)).TextColor(c.Theme().TextMuted)
 					})
 				})

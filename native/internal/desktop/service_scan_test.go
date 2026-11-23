@@ -125,6 +125,33 @@ func TestScanDeduplicatesAndCanCancel(t *testing.T) {
 	}
 }
 
+func TestDropdownsShowSelectionPrompts(t *testing.T) {
+	a := newApp(context.Background())
+	a.deviceList = []capturepkg.Device{{ID: "1", Label: `\Device\NPF_Loopback (Loopback)`}}
+	tt := ui.NewTester(a.view, 1100, 720)
+	for _, label := range []string{"选择网卡", "选择服务"} {
+		if !tt.HasText(label) {
+			t.Fatalf("missing prompt: %s", label)
+		}
+	}
+}
+
+func TestScanProgressUpdatesLoadingDialog(t *testing.T) {
+	a := newApp(context.Background())
+	a.dispatch = func(fn func()) { fn() }
+	d := &loadingDialog{active: true}
+	a.scanLoading = d
+	a.setScanProgress(3, 8)
+	if d.completed != 3 || d.total != 8 {
+		t.Fatalf("progress = %d/%d", d.completed, d.total)
+	}
+	d.active = false
+	a.setScanProgress(4, 8)
+	if d.completed != 3 || d.total != 8 {
+		t.Fatal("inactive dialog received progress")
+	}
+}
+
 func TestScanGroupsByPortAfterProbing(t *testing.T) {
 	list := []discoverypkg.Listener{
 		{IP: "::", Port: 8080, PID: 11, JVM: true}, {IP: "127.0.0.1", Port: 8080, PID: 11, JVM: true},

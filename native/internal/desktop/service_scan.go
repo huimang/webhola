@@ -22,6 +22,7 @@ func (a *app) scanServices() {
 	a.services = nil
 	a.serviceChoice = ""
 	a.scanLoading = a.openLoading(a.win, "loading.web_scan_title", "loading.web_scan_hint", func() string { return a.scanStatus }, cancel)
+	a.scanLoading.progressHint = "loading.web_scan_progress_hint"
 	a.workers.Add(1)
 	go func() {
 		defer a.workers.Done()
@@ -37,7 +38,10 @@ func (a *app) scanServices() {
 				}
 				return s, ok
 			}, func(done, total int) {
-				a.update(func() { a.scanStatus = i18npkg.MessageText("service_scan.probing_http_services_d_d", done, total) })
+				a.update(func() {
+					a.scanStatus = i18npkg.MessageText("service_scan.probing_http_services_d_d", done, total)
+					a.setScanProgress(done, total)
+				})
 			})
 		}
 		canceled := ctx.Err()
@@ -74,32 +78,47 @@ func (a *app) scanServices() {
 	}()
 }
 
-func (a *app) serviceScanView(c *ui.Context) {
-	ui.Row(c).FillWidth().Gap(10).Children(func() {
-		label := i18npkg.MessageText("service_scan.scan_http_services")
+func (a *app) setScanProgress(done, total int) {
+	d := a.scanLoading
+	if d == nil || !d.active {
+		return
+	}
+	d.completed, d.total = done, total
+	if d.window != nil {
+		d.window.Invalidate()
+	}
+}
+
+// serviceScanControls renders the right side of the adapter/port row.
+func (a *app) serviceScanControls(c *ui.Context) {
+	label := i18npkg.MessageText("service_scan.scan_http_services")
+	if a.scanning {
+		label = i18npkg.MessageText("service_scan.stop_scan")
+	}
+	if ui.Button(c, a.tr(label)).Disabled(a.running || a.pcap != "").Clicked() {
 		if a.scanning {
-			label = i18npkg.MessageText("service_scan.stop_scan")
+			a.scanCancel()
+		} else {
+			a.scanServices()
 		}
-		if ui.Button(c, a.tr(label)).Disabled(a.running || a.pcap != "").Clicked() {
-			if a.scanning {
-				a.scanCancel()
-			} else {
-				a.scanServices()
-			}
+	}
+	placeholder := a.tr("service_scan.select_a_service")
+	opts := []string{placeholder}
+	for _, s := range a.services {
+		opts = append(opts, a.serviceLabel(s))
+	}
+	ui.Text(c, a.tr("service_scan.discovered_services")).TextColor(c.Theme().TextMuted)
+	choice := placeholder
+	for _, service := range a.services {
+		if service.Key() == a.serviceChoice {
+			choice = a.serviceLabel(service)
+			break
 		}
-		var opts []string
-		for _, s := range a.services {
-			opts = append(opts, a.serviceLabel(s))
-		}
-		ui.Text(c, a.tr("service_scan.discovered_services")).TextColor(c.Theme().TextMuted)
-		choice := ""
-		for _, service := range a.services {
-			if service.Key() == a.serviceChoice {
-				choice = a.serviceLabel(service)
-				break
-			}
-		}
-		if ui.Select(c.Key("http-services"), &choice, opts).Grow(1).Label(a.tr("service_scan.discovered_http_services")).Disabled(a.running || a.scanning || len(opts) == 0 || a.pcap != "").Changed() {
+	}
+	if ui.Select(c.Key("http-services"), &choice, opts).Width(170).Label(a.tr("service_scan.discovered_http_services")).Disabled(a.running || a.scanning || len(a.services) == 0 || a.pcap != "").Changed() {
+		if choice == placeholder {
+			a.serviceChoice = ""
+		} else {
 			for _, service := range a.services {
 				if a.serviceLabel(service) == choice {
 					a.chooseService(service.Key())
@@ -107,16 +126,11 @@ func (a *app) serviceScanView(c *ui.Context) {
 				}
 			}
 		}
-		if _, knownJVM := a.selectedJVMService(); knownJVM {
-			if ui.Button(c, a.tr("service_scan.jvm_routes_and_tracing")).Disabled(a.scanning || a.pcap != "").Clicked() {
-				a.openArthas()
-			}
+	}
+	if _, knownJVM := a.selectedJVMService(); knownJVM {
+		if ui.Button(c, a.tr("service_scan.jvm_routes_and_tracing")).Disabled(a.scanning || a.pcap != "").Clicked() {
+			a.openArthas()
 		}
-	})
-	if a.scanStatus != "" {
-		ui.Text(c, a.tr(a.scanStatus)).FontSize(12).TextColor(c.Theme().TextMuted).Role(ui.RoleStatus)
-	} else {
-		ui.Text(c, a.tr("service_scan.click_scan_to_send_head_probes_to")).FontSize(12).TextColor(c.Theme().TextMuted)
 	}
 }
 
