@@ -1,7 +1,11 @@
 package desktop
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
+	"image"
+	"image/png"
 	"strings"
 	"testing"
 
@@ -81,6 +85,59 @@ func TestJSONBodyHighlightCopyAndReadOnly(t *testing.T) {
 	}
 }
 
+func TestImageBodyShowsMetadataAndPreview(t *testing.T) {
+	var data bytes.Buffer
+	picture := image.NewRGBA(image.Rect(0, 0, 4, 3))
+	for i := 0; i < len(picture.Pix); i += 4 {
+		picture.Pix[i], picture.Pix[i+1], picture.Pix[i+2], picture.Pix[i+3] = 255, 0, 255, 255
+	}
+	if err := png.Encode(&data, picture); err != nil {
+		t.Fatal(err)
+	}
+	raw := data.Bytes()
+	a := newApp(context.Background())
+	m := capturepkg.Message{Line: "HTTP/1.1 200 OK", ContentType: "image/png", Body: hex.Dump(raw), RawBody: raw, Bytes: len(raw)}
+	a.bodyPreview = newBodyPreview("image-1", &m)
+	p := a.bodyPreview
+	if !p.image || p.imageSource == nil || p.imageWidth != 4 || p.imageHeight != 3 || p.imageMode != bodyImageInfo {
+		t.Fatalf("image metadata not decoded: %+v", p)
+	}
+	tt := ui.NewTester(func(c *ui.Context) {
+		a.bodyToolbar(c, p, false)
+		a.renderBody(c, p)
+	}, 1200, 820)
+	for _, want := range []string{"格式：PNG", "尺寸：4 × 3 px", "大小："} {
+		if !tt.HasText(want) {
+			t.Fatalf("missing %s in %v", want, tt.Texts())
+		}
+	}
+	if frameHasColor(tt.Image(), 255, 0, 255) {
+		t.Fatal("image body defaulted to showing the picture")
+	}
+	if tt.HasText("原文") {
+		t.Fatal("image body exposed a raw binary view")
+	}
+	if err := tt.Click("预览"); err != nil {
+		t.Fatal(err)
+	}
+	if p.imageMode != bodyImagePreview || !tt.HasText("图片预览") || !frameHasColor(tt.Image(), 255, 0, 255) {
+		t.Fatal("image preview missing")
+	}
+}
+
+func frameHasColor(frame *image.RGBA, r, g, b uint8) bool {
+	bounds := frame.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			pixel := frame.RGBAAt(x, y)
+			if pixel.R == r && pixel.G == g && pixel.B == b {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func TestBodyFullscreenKeepsContentAndCanExit(t *testing.T) {
 	a := newApp(context.Background())
 	m := capturepkg.Message{Line: "HTTP/1.1 200 OK", ContentType: "application/json", Body: "[" + strings.Repeat(`{"id":1},`, 300) + `{"id":2}]`}
@@ -96,8 +153,8 @@ func TestBodyFullscreenKeepsContentAndCanExit(t *testing.T) {
 	}
 	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Key(ui.Cmd, ui.KeyC)
-	if tt.Clipboard() != m.Body {
-		t.Fatal("fullscreen raw text differs from selected body")
+	if tt.Clipboard() != m.Body[:rawDisplayLimit] {
+		t.Fatal("fullscreen raw text differs from the truncated body")
 	}
 	if err := tt.Click("格式化"); err != nil {
 		t.Fatal(err)
