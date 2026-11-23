@@ -1,69 +1,80 @@
-# Webhola
+<p align="center">
+  <img src="assets/brand/webhola-icon.svg" alt="Webhola logo" width="96" height="96">
+</p>
 
-Webhola 是面向网站开发的桌面调试工具，当前版本为 **0.2.1**。它把 HTTP 请求查看、接口重发和本机 Java 服务诊断放在同一个窗口中，方便定位请求、响应和服务内部调用的问题。
+<h1 align="center">Webhola</h1>
 
-目前主要支持并验证 Windows x64。
+<p align="center">A desktop debugging toolkit for website development.</p>
 
-## 主要功能
+<p align="center">
+  <a href="README.zh-CN.md">简体中文</a> · English
+</p>
 
-- **HTTP 抓包**：监听指定网卡和端口，查看请求与响应的方法、URL、状态、头部、正文和耗时，支持搜索和复制。
-- **请求重发**：重新发送捕获的请求，查看新的响应及错误，保留原始记录。
-- **服务发现**：扫描本机 HTTP / JVM 服务，选择端口并匹配抓包网卡。
-- **正文查看**：查看原文、格式化 JSON、预览图片，并在独立全屏窗口阅读正文。
-- **Java 服务诊断**：连接本机 JVM，查看 Spring 路由、内存、方法参数、返回结果、异常、调用树及反编译源码。
-- **界面设置**：支持中文 / English，以及跟随系统、浅色、深色主题。
+Webhola brings HTTP request inspection, request replay and local Java service diagnostics into one window, making it easier to track down problems in requests, responses and internal service calls.
 
-## 安装与准备
+It is currently developed and verified primarily on Windows x64.
 
-Windows 在线安装包为 `Webhola-Setup-0.2.1-x64.exe`，可按需准备两组依赖：
+## Features
 
-| 使用功能 | 所需依赖 |
+- **HTTP and MySQL capture**: listen on a selected adapter and port, then inspect HTTP requests and responses or MySQL commands with their SQL text and result summary, with search and copy.
+- **Request replay**: resend captured requests and inspect the new response or error while keeping the original record.
+- **Service discovery**: scan local HTTP / JVM services, pick a port and match the capture adapter.
+- **Body inspection**: view raw content, format JSON, preview images, and read bodies in a separate full-screen window.
+- **Java service diagnostics**: connect to a local JVM and inspect Spring routes, memory, method arguments, return values, exceptions, call trees and decompiled source.
+- **Interface settings**: Chinese / English, plus system, light and dark themes.
+
+## Installation and prerequisites
+
+Install the Windows x64 build with the installer; see the [Windows installer guide](installer/README.md) for details. Two optional dependency groups:
+
+| Feature | Requirements |
 | --- | --- |
-| 桌面 HTTP 抓包 | Windows 需要 Npcap；Linux/macOS 使用系统抓包接口 |
-| JVM 诊断 | 兼容目标 JVM、支持 attach 的 JDK 与 Arthas |
+| Desktop HTTP capture | Npcap on Windows; system capture interfaces on Linux/macOS |
+| JVM diagnostics | A JDK with attach support compatible with the target JVM, and Arthas |
 
-只使用 HTTP 抓包时无需安装 JVM 诊断组件。Npcap 安装和需要管理员权限的操作仍需用户确认。详细安装说明见[Windows 安装器](installer/README.md)；从源码构建见[开发指南](docs/development.md)。
+JVM dependencies are unnecessary if you only capture HTTP traffic. Npcap installation and actions that require administrator rights still need user confirmation. To build from source, see the [development guide](docs/development.md).
 
-## 开始使用
+## Getting started
 
-### 查看 HTTP 请求
+### Inspect HTTP requests
 
-1. 启动 Webhola，程序会自动枚举可用抓包网卡；Windows 需已安装 Npcap。
-2. 点击 **扫描 HTTP 服务** 并选择服务，或手动填写 HTTP 端口，例如 `8080`。
-3. 选择承载流量的网卡：本机 localhost 请求选 loopback，局域网请求选 WLAN 或以太网。
-4. 点击 **开始监听**，再从浏览器或客户端发起请求。
-5. 在左侧选择记录，查看右侧请求与响应。可复制内容、格式化 JSON、全屏查看或点击 **重新发送**。
-6. 点击 **停止监听** 保留当前记录。清空不会停止监听，重新开始会清空上一会话。
+1. Start Webhola. It enumerates available capture adapters automatically; on Windows, Npcap must already be installed.
+2. Click **Scan HTTP services** and choose a service, or enter the port manually, for example `8080` for HTTP or `3306` for MySQL.
+3. Choose the adapter that carries the traffic: loopback for localhost requests, WLAN or Ethernet for LAN requests.
+4. Click **Start capture**, then send requests from a browser or client.
+5. Select a record on the left to inspect the request and response on the right. You can copy content, format JSON, open full screen, or click **Resend**.
+6. Click **Stop capture** to keep the current records. Clear does not stop capture; starting again clears the previous session.
 
-### 诊断 Java 服务
+### Diagnose Java services
 
-1. 在设置中配置 JDK 和 Arthas。
-2. 扫描并选择已识别为 JVM 的服务，打开 **JVM 路由与跟踪…**。
-3. 连接并扫描路由，选择目标方法，启动 watch 或 trace 后再发起业务请求。
-4. 查看调用记录、参数、返回值或调用树，必要时下探方法或查看源码。
-5. 完成后停止观察并关闭诊断标签页。
+1. Configure the JDK and Arthas in Settings.
+2. Scan and select a service recognized as JVM, then open **JVM routes and tracing…**.
+3. Connect and scan routes, pick a target method, start watch or trace, then trigger business requests.
+4. Inspect call records, arguments, return values or the call tree, and drill into methods or decompiled source when needed.
+5. Stop observing and close the diagnostics tab when finished.
 
-连接条件、ClassLoader、诊断限制等见[JVM 使用说明](docs/jvm-diagnostics.md)。
+Connection requirements, class loaders and limitations are covered in [JVM diagnostics](docs/jvm-diagnostics.md).
 
-### 调整界面
+### Adjust the interface
 
-通过 **视图 → 语言** 切换中文或英文，通过 **视图 → 主题** 选择主题；偏好会保存。**帮助 → 关于 Webhola** 可查看版本。
+Switch between Chinese and English via **View → Language**, and choose a theme via **View → Theme**; preferences are saved. **Help → About Webhola** shows the current version.
 
-### 示例与离线抓包文件
+### Demo and offline capture files
 
 ```powershell
 .\Webhola.exe --demo
 .\Webhola.exe --read C:\captures\sample.pcapng
 ```
 
-示例模式不监听网络；离线读取不需要外部抓包程序，填写端口后开始读取即可。
+Demo mode does not listen on the network. Offline reading needs no external capture program: enter a port and start reading.
 
-## 当前限制
+## Current limitations
 
-- HTTP 抓包支持明文 HTTP/1.x，不解密 HTTPS，不解析 HTTP/2、HTTP/3 或 WebSocket 升级后的消息。
-- 只能捕获所选网卡上的流量；抓包中途加入时会从下一条完整 HTTP 消息开始接管，丢包可能导致记录不完整。
-- 单条 HTTP 正文最多预览 64 KiB，最多保留 1000 条记录；记录保存在内存中，退出后清除。
-- JVM 诊断面向本机 JVM，路由扫描支持 Spring HandlerMethod；需要相应进程权限。
-- Linux/macOS 尚未完成整套桌面应用的实机验收。
+- Capture supports plaintext HTTP/1.x and MySQL without TLS or compression. HTTPS is not decrypted, and HTTP/2, HTTP/3 and post-upgrade WebSocket messages are not parsed.
+- MySQL on a non-default port is detected by a short local probe when capture starts; MySQL records cannot be resent.
+- Only traffic on the selected adapter is visible. Connections that existed before capture are taken over from the next complete HTTP message; packet loss may leave records incomplete.
+- Each body previews at most 64 KiB, and up to 1000 records are kept in memory and cleared on exit.
+- JVM diagnostics target local JVMs; route scanning supports Spring HandlerMethods and requires permissions for the target process.
+- Linux/macOS have not been fully verified on real devices.
 
-更多行为和边界见 [HTTP 抓包说明](docs/http-capture.md)。架构、开发指南、开发计划及验证记录集中在[文档目录](docs/README.md)。
+See [HTTP capture](docs/http-capture.md) for more behavior and limits. Architecture, development guide, roadmap and validation records are collected in the [documentation index](docs/README.md).
